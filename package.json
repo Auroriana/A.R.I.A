@@ -6,6 +6,6 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "audit:vault": "node tools/audit-vault.mjs",
-    "test": "node --test tests/audit-vault.test.mjs"
+    "test": "node --test tests/*.test.mjs"
   }
 }

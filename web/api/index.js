@@ -1,4 +1,5 @@
 import {models,validateChat} from '../lib/models.js';
+import {noteRoutes} from '../lib/notes-api.js';
 import {gemini,embed} from '../lib/providers.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
@@ -37,6 +38,7 @@ export default async function handler(req,res){
     const user=await sb('/auth/v1/user',token);
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
+	if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
     if(req.method!=='POST'||route!=='/api/chat')throw fail('Not found.',404);
     const {model,message,mode,history}=validateChat(await readBody(req));
     if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled. Configure a Free-tier API key and confirm its billing tier.',503);
