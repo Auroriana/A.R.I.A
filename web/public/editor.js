@@ -36,7 +36,7 @@ async function openNote(path) {
   if (busy || (dirty() && !confirm('Discard unsaved changes?'))) return;
   status('');
   try {
-    const n = await api(`note?path=${encodeURIComponent(path)}`);
+    const n = await api('note-read', { path });
     open = { path: n.path, version: n.version };
     $('editor').disabled = false;
     $('editor').value = n.content;

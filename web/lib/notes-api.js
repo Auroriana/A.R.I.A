@@ -19,8 +19,8 @@ export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
     send(200, { notes });
     return true;
   }
-  if (req.method === 'GET' && route === '/api/note') {
-    const path = cleanPath(url.searchParams.get('path'));
+  if (req.method === 'POST' && route === '/api/note-read') {
+    const path = cleanPath((await readJson(req)).path);
     const rows = await sb(`/rest/v1/aria_notes?select=path,content,version,ai_enabled&deleted=eq.false&path=eq.${encodeURIComponent(path)}`, token);
     if (!rows.length) throw fail('Note not found.', 404);
     send(200, rows[0]);
