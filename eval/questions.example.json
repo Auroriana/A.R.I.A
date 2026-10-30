@@ -1,0 +1,10 @@
+{
+  "instructions": "Copy to a local evaluation file. Replace placeholders with questions and source paths from your actual notes. Do not score models until the expected evidence is filled in.",
+  "cases": [
+    { "id": "exact", "category": "exact-fact", "question": "REPLACE: a precise fact or date", "expectedSources": [], "expectedClaims": [], "forbiddenClaims": [] },
+    { "id": "alias", "category": "alias", "question": "REPLACE: a question using a nickname or alternate term", "expectedSources": [], "expectedClaims": [], "forbiddenClaims": [] },
+    { "id": "indirect", "category": "indirect-connection", "question": "REPLACE: a question needing evidence from two indirectly linked notes", "expectedSources": [], "expectedClaims": [], "forbiddenClaims": [] },
+    { "id": "conflict", "category": "contradiction", "question": "REPLACE: a question with conflicting sources", "expectedSources": [], "expectedClaims": [], "forbiddenClaims": [] },
+    { "id": "missing", "category": "unanswerable", "question": "REPLACE: something the vault does not establish", "expectedSources": [], "expectedClaims": ["State that the vault does not establish the answer"], "forbiddenClaims": ["Invent a source or fact"] }
+  ]
+}

@@ -1,0 +1,1 @@
+{"name":"aria-chat","private":true,"type":"module","engines":{"node":">=22"},"scripts":{"dev":"node --env-file-if-exists=.env.local dev.mjs","test":"node --test tests/*.test.mjs"}}

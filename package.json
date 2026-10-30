@@ -1,0 +1,11 @@
+{
+  "name": "aria-knowledge-setup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "audit:vault": "node tools/audit-vault.mjs",
+    "test": "node --test tests/audit-vault.test.mjs"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "status": "planning-only-except-local-audit",
+  "audit": {
+    "vaultPath": "vault/Aria Knowledge",
+    "excludePaths": ["00 Inbox", "80 Templates", "90 Attachments", "98 Private", "99 Archive", "Start Here.md", "40 Questions/Questions to Test.md"],
+    "maxFileBytes": 10485760,
+    "estimatedChunkTokens": 700,
+    "estimatedOverlapTokens": 100,
+    "embeddingDimensionsForEstimate": 768
+  },
+  "proposedDeployment": {
+    "database": "supabase-free",
+    "backup": "optional-separate-private-github-repository",
+    "frontendAndApi": "nextjs-on-vercel-subject-to-plan-and-network-check",
+    "authentication": "single-owner-server-session",
+    "cloudSync": "disabled-until-implemented",
+    "requireAiOptIn": true,
+    "embeddingModel": null,
+    "embeddingNote": "Select after language audit; use the same model, dimensions and normalization for notes and online query embeddings."
+  },
+  "proposedModels": {
+    "qualityCandidate": "gemini-3.8-flash",
+    "budgetCandidate": "deepseek-flash",
+    "requestedProviders": ["gemini", "deepseek"],
+    "initialProvider": "gemini-free-tier-pending-account-verification",
+    "deepseekEnabled": false,
+    "paidRequestsEnabled": false,
+    "selectedProductionModel": null,
+    "allowFreeTierPrivateContent": false,
+    "automaticPaidFallback": false
+  },
+  "proposedLimits": {
+    "timezone": "Asia/Shanghai",
+    "questionsPerDay": 50,
+    "monthlyGenerationBudgetPhp": 0,
+    "usdToPhp": null,
+    "normal": { "maxGenerationCalls": 1, "maxInputTokens": 8000, "maxBillableOutputTokens": 1500 },
+    "research": { "maxGenerationCalls": 3, "maxTotalInputTokens": 24000, "maxTotalBillableOutputTokens": 4500 },
+    "note": "Design targets, not enforced limits. Include reasoning and retries. Premium research must be explicitly selected."
+  }
+}
