@@ -10,11 +10,12 @@ const sha = s => createHash('sha256').update(s, 'utf8').digest('hex');
 const DENY_DIR = /^(98 private|80 templates)$/i;
 
 function parseArgs(argv) {
-  const o = { apply: false, resolve: {}, massDelete: false, vault: path.join(root, 'vault', 'Aria Knowledge') };
+  const o = { apply: false, watch: 0, resolve: {}, massDelete: false, vault: path.join(root, 'vault', 'Aria Knowledge') };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--apply') o.apply = true;
     else if (a === '--allow-mass-delete') o.massDelete = true;
+    else if (a === '--watch') o.watch = Math.max(30, Number(argv[i + 1]?.match(/^\d+$/) ? argv[++i] : 60));
     else if (a === '--vault' && argv[i + 1]) o.vault = path.resolve(argv[++i]);
     else if (a === '--resolve' && argv[i + 1]) {
       const v = argv[++i], k = v.lastIndexOf('=');
@@ -90,8 +91,7 @@ async function writeSafely(vaultCanonical, rel, text) {
   await rename(tmp, target);
 }
 
-async function main() {
-  const o = parseArgs(process.argv.slice(2));
+async function run(o) {
   const vault = await scan(o.vault);
   const statePath = path.join(root, '.local', 'aria-sync-state.json');
   let state = { vault: vault.canonical, notes: {} };
@@ -162,4 +162,15 @@ async function main() {
   if (failures) process.exitCode = 1;
 }
 
+async function main() {
+  const o = parseArgs(process.argv.slice(2));
+  if (!o.watch) return run(o);
+  o.apply = true;
+  console.log(`Watching: syncing every ${o.watch}s. Ctrl+C to stop.`);
+  for (;;) {
+    try { await run(o); } catch (e) { console.error(e.message); }
+    process.exitCode = 0;
+    await new Promise(r => setTimeout(r, o.watch * 1000));
+  }
+}
 main().catch(e => { console.error(e.message); process.exitCode = 1; });

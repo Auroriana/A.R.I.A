@@ -44,6 +44,7 @@ async function openNote(path) {
     $('current').textContent = n.path;
     $('meta').textContent = `Version ${n.version}`;
     setAi(n.ai_enabled);
+    $('props').hidden = false; syncProps();
     renderList(); updateButtons();
   } catch (e) { status(e.message, true); }
 }
@@ -62,7 +63,49 @@ async function save() {
   finally { busy = false; updateButtons(); }
 }
 
-$('editor').oninput = updateButtons;
+
+// ---- frontmatter helpers (line-based; leaves keys we don't manage untouched)
+function splitFm(text) {
+  const m = text.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*(?:\n|$)/);
+  return m ? { lines: m[1].split('\n'), rest: text.slice(m[0].length) } : { lines: [], rest: text };
+}
+function keyRange(lines, key) {
+  const i = lines.findIndex(l => new RegExp(`^${key}[ \\t]*:`, 'i').test(l));
+  if (i < 0) return null;
+  let j = i + 1;
+  while (j < lines.length && /^([ \t]+|-[ \t])/.test(lines[j])) j++;
+  return { i, j };
+}
+function readList(lines, key) {
+  const r = keyRange(lines, key);
+  if (!r) return [];
+  const first = lines[r.i].replace(/^[^:]*:/, '').trim();
+  const raw = first ? first.replace(/^\[|\]$/g, '').split(',') : lines.slice(r.i + 1, r.j).map(l => l.replace(/^[ \t]*-[ \t]*/, ''));
+  return raw.map(s => s.trim().replace(/^["']|["']$/g, '').replace(/^#/, '')).filter(Boolean);
+}
+const quote = s => (/^[\w\u00C0-\uFFFF][\w\u00C0-\uFFFF .\/-]*$/.test(s) ? s : JSON.stringify(s));
+function setKey(text, key, value) { // value: string, array, or null/[] to remove
+  const { lines, rest } = splitFm(text);
+  const r = keyRange(lines, key);
+  if (r) lines.splice(r.i, r.j - r.i);
+  const list = Array.isArray(value);
+  if (value !== null && !(list && !value.length)) lines.push(`${key}: ${list ? `[${value.map(quote).join(', ')}]` : value}`);
+  if (!lines.length) return rest.replace(/^\n+/, '');
+  return `---\n${lines.join('\n')}\n---\n${splitFm(text).lines.length || /^---/.test(text) ? rest : `\n${rest}`}`;
+}
+const csv = v => v.split(',').map(s => s.trim().replace(/^#/, '')).filter(Boolean);
+function syncProps() {
+  const { lines } = splitFm($('editor').value);
+  $('ai-toggle').checked = lines.some(l => /^ai_enabled[ \t]*:[ \t]*true[ \t]*$/i.test(l));
+  if (document.activeElement !== $('aliases')) $('aliases').value = readList(lines, 'aliases').join(', ');
+  if (document.activeElement !== $('tags')) $('tags').value = readList(lines, 'tags').join(', ');
+}
+function edit(key, value) { $('editor').value = setKey($('editor').value, key, value); updateButtons(); syncProps(); }
+$('ai-toggle').onchange = () => edit('ai_enabled', $('ai-toggle').checked ? 'true' : 'false');
+$('aliases').onchange = () => edit('aliases', csv($('aliases').value));
+$('tags').onchange = () => edit('tags', csv($('tags').value));
+
+$('editor').oninput = () => { updateButtons(); syncProps(); };
 $('save').onclick = save;
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } });
 window.addEventListener('beforeunload', e => { if (dirty()) { e.preventDefault(); e.returnValue = ''; } });
