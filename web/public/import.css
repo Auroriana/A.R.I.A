@@ -1,0 +1,21 @@
+body.import main{overflow:hidden}
+.import-scroll{flex:1;overflow:auto;padding:26px 30px 48px}
+.import-scroll>*{max-width:900px;margin-left:auto;margin-right:auto}
+.import-scroll .props{padding:12px 0 0}
+.lede{font-size:13px;line-height:1.8;color:#687e70;margin:0}
+.hint{font-size:11px;color:#8a978c;margin:8px auto 0}
+#paste{display:block;width:100%;min-height:280px;height:38vh;max-height:none;resize:vertical;margin-top:16px;background:#fff;border:1px solid #dbe2d3;border-radius:12px;padding:16px;font-family:Consolas,Menlo,monospace;font-size:13px;line-height:1.6;white-space:pre;overflow:auto}
+.actions{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.actions #count{font-size:11px;color:#97a18f;margin-left:auto}
+.import-scroll .note-status{margin-left:auto;margin-right:auto}
+#done{font-size:13px;margin-top:12px}
+#done a{color:#345e50}
+#result h2{font-family:Georgia,serif;font-weight:400;font-size:20px;margin:28px 0 10px}
+.facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 20px;font-size:12px;margin:26px auto 0}
+.facts dt{color:#7e8b81}.facts dd{margin:0;color:#304c40;overflow-wrap:anywhere}
+.warnings{margin:14px auto 0;padding:0;list-style:none}
+.warnings li{background:#f3eddb;border:1px solid #e4d9b9;border-radius:8px;padding:10px 14px;font-size:12px;color:#75623a;margin-bottom:6px}
+.legend{display:flex;gap:18px;font-size:11px;color:#687e70;margin:0 auto 8px}
+.added{background:#dcebd2;color:#2c5a3a}
+#sample{background:#fff;border:1px solid #dbe2d3;border-radius:10px;padding:14px;font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;margin-top:0;margin-bottom:0}
+#paths{font-size:12px;color:#52685b;line-height:1.9;padding-left:22px;overflow-wrap:anywhere}

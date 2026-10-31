@@ -8,22 +8,26 @@ import { planSync } from './sync-plan.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sha = s => createHash('sha256').update(s, 'utf8').digest('hex');
 const DENY_DIR = /^(98 private|80 templates)$/i;
+const DEFAULT_VAULT_ID = 'a81a0000-0000-4000-8000-0000000000f1'; // the "Aria Knowledge" vault
 
 function parseArgs(argv) {
-  const o = { apply: false, watch: 0, resolve: {}, massDelete: false, vault: path.join(root, 'vault', 'Aria Knowledge') };
+  const o = { apply: false, watch: 0, resolve: {}, massDelete: false, vault: path.join(root, 'vault', 'Aria Knowledge'), cloudVault: 'Aria Knowledge', vaultGiven: false, cloudGiven: false, createVault: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--apply') o.apply = true;
     else if (a === '--allow-mass-delete') o.massDelete = true;
     else if (a === '--watch') o.watch = Math.max(30, Number(argv[i + 1]?.match(/^\d+$/) ? argv[++i] : 60));
-    else if (a === '--vault' && argv[i + 1]) o.vault = path.resolve(argv[++i]);
+    else if (a === '--create-vault') o.createVault = true;
+    else if (a === '--cloud-vault' && argv[i + 1]) { o.cloudVault = argv[++i]; o.cloudGiven = true; }
+    else if (a === '--vault' && argv[i + 1]) { o.vault = path.resolve(argv[++i]); o.vaultGiven = true; }
     else if (a === '--resolve' && argv[i + 1]) {
       const v = argv[++i], k = v.lastIndexOf('=');
       const choice = v.slice(k + 1);
       if (k < 1 || !['local', 'web'].includes(choice)) throw new Error('--resolve "Folder/Note.md=local|web"');
       o.resolve[v.slice(0, k)] = choice;
-    } else throw new Error('Usage: node tools/sync-vault.mjs [--vault PATH] [--apply] [--resolve "path.md=local|web"] [--allow-mass-delete]');
+    } else throw new Error('Usage: node tools/sync-vault.mjs [--vault PATH] [--cloud-vault NAME [--create-vault]] [--apply] [--resolve "path.md=local|web"] [--allow-mass-delete]');
   }
+  if (o.cloudGiven && !o.vaultGiven) throw new Error('--cloud-vault needs --vault PATH too, so another folder cannot be synced into it by mistake.');
   return o;
 }
 
@@ -69,10 +73,20 @@ async function login() {
   return s.access_token;
 }
 
-async function listRemote(token) {
+async function resolveVault(token, name, create) {
+  const rows = await sb('/rest/v1/aria_vaults?select=id,name&order=created_at.asc', { token });
+  const hit = rows.find(v => v.name.trim().toLowerCase() === name.trim().toLowerCase());
+  if (hit) return hit.id;
+  if (!create) throw new Error(`Cloud vault "${name}" does not exist. Existing: ${rows.map(v => v.name).join(', ') || '(none)'}. Add --create-vault to create it.`);
+  const r = await sb('/rest/v1/rpc/aria_create_vault', { token, body: { p_name: name.trim() } });
+  if (!r.ok) throw new Error(`Could not create vault (${r.reason}).`);
+  return r.id;
+}
+
+async function listRemote(token, vaultId) {
   const out = new Map();
   for (let from = 0; ; from += 1000) {
-    const rows = await sb('/rest/v1/aria_notes?select=path,content_hash,version,deleted&order=path.asc', { token, headers: { 'Range-Unit': 'items', Range: `${from}-${from + 999}` } });
+    const rows = await sb('/rest/v1/aria_notes?select=path,content_hash,version,deleted&vault_id=eq.' + vaultId + '&order=path.asc', { token, headers: { 'Range-Unit': 'items', Range: `${from}-${from + 999}` } });
     for (const n of rows) out.set(n.path, { hash: n.content_hash, version: n.version, deleted: n.deleted });
     if (rows.length < 1000) return out;
   }
@@ -93,13 +107,14 @@ async function writeSafely(vaultCanonical, rel, text) {
 
 async function run(o) {
   const vault = await scan(o.vault);
-  const statePath = path.join(root, '.local', 'aria-sync-state.json');
+  const token = await login();
+  const vaultId = await resolveVault(token, o.cloudVault, o.createVault);
+  const statePath = path.join(root, '.local', vaultId === DEFAULT_VAULT_ID ? 'aria-sync-state.json' : `aria-sync-${vaultId}.json`);
   let state = { vault: vault.canonical, notes: {} };
   try { state = JSON.parse(await readFile(statePath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (state.vault !== vault.canonical) throw new Error(`Sync state belongs to a different vault (${state.vault}). Refusing to continue; delete .local/aria-sync-state.json only if you are sure.`);
 
-  const token = await login();
-  const remote = await listRemote(token);
+  const remote = await listRemote(token, vaultId);
   const local = new Map([...vault.files].map(([p, f]) => [p, f.hash]));
   let actions = planSync({ local, remote, base: new Map(Object.entries(state.notes)), resolve: o.resolve });
 
@@ -113,6 +128,7 @@ async function run(o) {
 
   const count = {};
   for (const a of actions) if (a.type !== 'adopt' && a.type !== 'forget') count[a.type] = (count[a.type] ?? 0) + 1;
+  console.log(`Cloud vault: ${o.cloudVault}.`);
   console.log(`Local ${local.size} notes, cloud ${[...remote.values()].filter(r => !r.deleted).length}. Skipped:`, vault.skipped);
   console.log('Plan:', Object.keys(count).length ? count : 'nothing to do');
   for (const a of actions) if (!['adopt', 'forget'].includes(a.type)) console.log(`  ${a.type.padEnd(13)} ${a.path}`);
@@ -127,16 +143,16 @@ async function run(o) {
       else if (a.type === 'forget') delete state.notes[p];
       else if (a.type === 'push') {
         const text = vault.files.get(p).text;
-        const r = await sb('/rest/v1/rpc/aria_save_note', { token, body: { p_path: p, p_content: text, p_base_version: a.baseVersion, p_origin: 'local', p_chunks: chunkMarkdown(text) } });
+        const r = await sb('/rest/v1/rpc/aria_save_note', { token, body: { p_vault: vaultId, p_path: p, p_content: text, p_base_version: a.baseVersion, p_origin: 'local', p_chunks: chunkMarkdown(text) } });
         if (!r.ok) { console.warn(`  push failed (${r.reason}): ${p}`); failures++; continue; }
         if (r.hash !== local.get(p)) { console.warn(`  hash mismatch after push, state not updated: ${p}`); failures++; continue; }
         state.notes[p] = { hash: r.hash, version: r.version };
       } else if (a.type === 'delete-remote') {
-        const r = await sb('/rest/v1/rpc/aria_delete_note', { token, body: { p_path: p, p_base_version: a.baseVersion } });
+        const r = await sb('/rest/v1/rpc/aria_delete_note', { token, body: { p_vault: vaultId, p_path: p, p_base_version: a.baseVersion } });
         if (!r.ok) { console.warn(`  delete failed (${r.reason}): ${p}`); failures++; continue; }
         delete state.notes[p];
       } else if (a.type === 'pull' || a.type === 'conflict') {
-        const rows = await sb(`/rest/v1/aria_notes?select=content,content_hash,version&deleted=eq.false&path=eq.${encodeURIComponent(p)}`, { token });
+        const rows = await sb(`/rest/v1/aria_notes?select=content,content_hash,version&deleted=eq.false&vault_id=eq.${vaultId}&path=eq.${encodeURIComponent(p)}`, { token });
         if (!rows.length) { console.warn(`  vanished from cloud: ${p}`); failures++; continue; }
         const { content, content_hash, version } = rows[0];
         if (sha(content) !== content_hash) { console.warn(`  cloud content failed integrity check: ${p}`); failures++; continue; }

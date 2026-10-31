@@ -1,5 +1,6 @@
+import { mountVaults } from '/vaults.js';
 const $ = id => document.getElementById(id);
-let notes = [], open = null, baseline = '', busy = false; // open = {path, version}
+let notes = [], open = null, baseline = '', busy = false, vault = ''; // open = {path, version}
 
 async function api(route, body) {
   const r = await fetch(`/api/${route}`, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : {}, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -30,13 +31,13 @@ function renderList() {
   if (!notes.length) { const p = document.createElement('p'); p.className = 'folder'; p.textContent = 'No notes yet. Create one, or run the sync command.'; list.append(p); }
 }
 
-async function loadList() { notes = (await api('notes')).notes; renderList(); }
+async function loadList() { notes = (await api(`notes?vault=${vault}`)).notes; renderList(); }
 
 async function openNote(path) {
   if (busy || (dirty() && !confirm('Discard unsaved changes?'))) return;
   status('');
   try {
-    const n = await api('note-read', { path });
+    const n = await api('note-read', { vault, path });
     open = { path: n.path, version: n.version };
     $('editor').disabled = false;
     $('editor').value = n.content;
@@ -54,7 +55,7 @@ async function save() {
   busy = true; updateButtons(); status('');
   try {
     const content = $('editor').value;
-    const r = await api('note', { path: open.path, content, baseVersion: open.version });
+    const r = await api('note', { vault, path: open.path, content, baseVersion: open.version });
     open.version = r.version; baseline = content;
     $('meta').textContent = `Saved · version ${r.version}`;
     setAi(r.ai_enabled);
@@ -119,7 +120,7 @@ $('new-note').onclick = async () => {
   try {
     const title = path.split('/').pop().replace(/\.md$/i, '');
     const content = `---\nai_enabled: false\n---\n\n# ${title}\n`;
-    const r = await api('note', { path, content, baseVersion: 0 });
+    const r = await api('note', { vault, path, content, baseVersion: 0 });
     busy = false;
     await loadList();
     await openNote(path);
@@ -128,4 +129,17 @@ $('new-note').onclick = async () => {
   finally { busy = false; updateButtons(); }
 };
 
-try { await loadList(); } catch (e) { status(e.message, true); }
+function resetEditor() {
+  open = null; baseline = '';
+  $('editor').value = ''; $('editor').disabled = true; $('props').hidden = true;
+  $('current').textContent = 'No note open'; $('meta').textContent = 'Select a note, or create one.';
+  setAi(null); status(''); updateButtons();
+}
+try {
+  vault = (await mountVaults({
+    select: $('vault'), api, createButton: $('new-vault'),
+    canChange: () => !busy && (!dirty() || confirm('Discard unsaved changes?')),
+    onChange: v => { vault = v; resetEditor(); loadList().catch(e => status(e.message, true)); }
+  })).value;
+  await loadList();
+} catch (e) { status(e.message, true); }

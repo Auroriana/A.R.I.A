@@ -1,4 +1,6 @@
-import { cleanPath, cleanContent, chunkMarkdown } from './notes.js';
+import { cleanPath, cleanContent, chunkMarkdown, isUuid } from './notes.js';
+
+const vaultOf = (v, fail) => { if (!isUuid(v)) throw fail('Choose a vault.', 400); return v.toLowerCase(); };
 
 const LIMIT = 420000; // 200k chars of note text, with JSON/UTF-8 headroom
 
@@ -14,27 +16,47 @@ async function readJson(req) {
 
 // Called by api/index.js after the owner session has been verified. Returns true if handled.
 export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
+  if (req.method === 'GET' && route === '/api/vaults') {
+    send(200, { vaults: await sb('/rest/v1/aria_vaults?select=id,name&order=created_at.asc,name.asc', token) });
+    return true;
+  }
+  if (req.method === 'POST' && route === '/api/vault-create') {
+    const b = await readJson(req);
+    if (typeof b.name !== 'string') throw fail('Vault name required.');
+    const r = await sb('/rest/v1/rpc/aria_create_vault', token, { p_name: b.name });
+    if (!r.ok) {
+      if (r.reason === 'exists') throw fail('A vault with that name already exists.', 409);
+      if (r.reason === 'limit') throw fail('Vault limit reached (20).');
+      throw fail('Vault names must be 1–80 characters with no control characters.');
+    }
+    send(200, { id: r.id, name: r.name });
+    return true;
+  }
   if (req.method === 'GET' && route === '/api/notes') {
-    const notes = await sb('/rest/v1/aria_notes?select=path,title,version,updated_at,ai_enabled,origin&deleted=eq.false&order=path.asc&limit=1000', token);
+    const vault = vaultOf(url.searchParams.get('vault'), fail);
+    const notes = await sb(`/rest/v1/aria_notes?select=path,title,version,updated_at,ai_enabled,origin&deleted=eq.false&vault_id=eq.${vault}&order=path.asc&limit=1000`, token);
     send(200, { notes });
     return true;
   }
   if (req.method === 'POST' && route === '/api/note-read') {
-    const path = cleanPath((await readJson(req)).path);
-    const rows = await sb(`/rest/v1/aria_notes?select=path,content,version,ai_enabled&deleted=eq.false&path=eq.${encodeURIComponent(path)}`, token);
+    const b = await readJson(req);
+    const vault = vaultOf(b.vault, fail);
+    const path = cleanPath(b.path);
+    const rows = await sb(`/rest/v1/aria_notes?select=path,content,version,ai_enabled&deleted=eq.false&vault_id=eq.${vault}&path=eq.${encodeURIComponent(path)}`, token);
     if (!rows.length) throw fail('Note not found.', 404);
     send(200, rows[0]);
     return true;
   }
   if (req.method === 'POST' && route === '/api/note') {
     const b = await readJson(req);
+    const vault = vaultOf(b.vault, fail);
     const path = cleanPath(b.path);
     const content = cleanContent(b.content);
     if (!Number.isInteger(b.baseVersion) || b.baseVersion < 0) throw fail('baseVersion required.');
-    const r = await sb('/rest/v1/rpc/aria_save_note', token, { p_path: path, p_content: content, p_base_version: b.baseVersion, p_origin: 'web', p_chunks: chunkMarkdown(content) });
+    const r = await sb('/rest/v1/rpc/aria_save_note', token, { p_vault: vault, p_path: path, p_content: content, p_base_version: b.baseVersion, p_origin: 'web', p_chunks: chunkMarkdown(content) });
     if (!r.ok) {
       if (r.reason === 'conflict') return send(409, { error: 'This note changed elsewhere (Obsidian sync or another tab). Your text is still in the editor; copy it, reload the note, and merge.', version: r.version }), true;
-      throw fail('Note could not be saved.', r.reason === 'denied' ? 403 : 400);
+      throw fail(r.reason === 'invalid_vault' ? 'Unknown vault.' : 'Note could not be saved.', r.reason === 'denied' ? 403 : 400);
     }
     send(200, { version: r.version, ai_enabled: r.ai_enabled });
     return true;

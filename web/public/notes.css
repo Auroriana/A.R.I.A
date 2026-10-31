@@ -26,3 +26,6 @@ body.notes a.nav{display:block;color:inherit;text-decoration:none}
 .props input[type=text],.props input:not([type]){border:1px solid #dbe2d3;border-radius:6px;padding:7px 9px;background:#fff;font-size:12px;min-width:180px}
 .props .toggle{color:#345e50;font-weight:bold}
 @media(max-width:800px){.props{padding:12px 15px 0}}
+
+.vault-pick{display:flex;gap:6px;margin:0 0 10px}
+.vault-pick select{flex:1;max-width:none;min-width:0}

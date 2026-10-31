@@ -1,0 +1,5 @@
+1. Copy everything in this folder into your Aria repository root (same folder layout; web/dev.mjs is replaced).
+2. In the repo root run:  node apply-vaults-update.mjs
+   (If it prints "Nothing was changed", send me its message; no file was touched.)
+3. Supabase SQL Editor: run web/supabase/004_vaults.sql (after 001, 002_notes, 002_search_questions, 003).
+4. cd web; npm test, then npm run dev.

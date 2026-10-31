@@ -54,3 +54,11 @@ The selected starter vault remains at ../vault/Aria Knowledge relative to the we
 ## Verification limits
 
 Automated tests mock provider responses. Real Gemini calls, Supabase SQL execution/RLS isolation, Vercel deployment, and restricted-network access require configured accounts and must be checked before using private notes. Free Gemini content-use terms apply; start with non-sensitive samples.
+
+## Vaults and paste import
+
+Run `supabase/004_vaults.sql` after the earlier scripts (001, 002_notes, 002_search_questions, 003). It is safe to rerun. Existing notes move into a vault called "Aria Knowledge".
+
+- **Switching vaults.** Chat: choose "Search my notes", then pick a vault (or "All vaults"). Notes and Import have their own picker. The ＋ button creates a vault.
+- **Syncing your own Obsidian vault into a cloud vault:** `node tools/sync-vault.mjs --vault "D:\path\to\vault" --cloud-vault "My Vault" --create-vault` (dry run; add `--apply` to execute). `--vault` is required with `--cloud-vault`. Each cloud vault keeps its own sync state in `.local/`.
+- **Paste import** (`/import.html`). Your text is cut only at existing line breaks, never edited. Aria adds a small frontmatter header and `##` section labels between lines (shown highlighted in the preview). The text is checked before saving and each saved note is read back and compared with what was sent. Large pastes become numbered notes. Text that cannot be stored unchanged (NUL characters, \r, broken Unicode, or one unbroken block over about 150,000 characters) is refused rather than altered.

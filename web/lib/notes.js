@@ -4,6 +4,7 @@ const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const bad = (m = 'Invalid note path.') => Object.assign(new Error(m), { status: 400 });
 
 export const normalize = s => s.replace(/\r\n?/g, '\n');
+export const isUuid = v => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
 // Vault-relative, forward-slash, .md only. Used by the API AND the local sync agent
 // (the agent writes cloud-supplied paths to disk, so this is the traversal defense).

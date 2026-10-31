@@ -1,13 +1,16 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import handler from './api/index.js';
-const files={'/':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/style.css':['style.css','text/css'],'/notes.html':['notes.html','text/html'],'/notes.js':['notes.js','text/javascript'],'/notes.css':['notes.css','text/css']};
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
 const port=Number(process.env.PORT??3000);
 const server=http.createServer(async(req,res)=>{
  if(req.url.startsWith('/api/'))return handler(req,res);
- const file=files[new URL(req.url,'http://localhost').pathname];
- if(!file){res.writeHead(404);return res.end('Not found');}
- res.setHeader('Content-Type',file[1]);res.end(await readFile(new URL(`public/${file[0]}`,import.meta.url)));
+ let name;
+ try{name=decodeURIComponent(new URL(req.url,'http://localhost').pathname.slice(1))||'index.html';}catch{name='';}
+ const type=types[name.slice(name.lastIndexOf('.'))];
+ if(!type||name.includes('..')||name.includes('\\')){res.writeHead(404);return res.end('Not found');}
+ try{res.setHeader('Content-Type',type);res.end(await readFile(new URL(`public/${name}`,import.meta.url)));}
+ catch{res.writeHead(404);res.end('Not found');}
 });
 server.on('error',error=>{
  if(error.code==='EADDRINUSE') console.error(`Port ${port} is already in use. Stop the previous Aria server with Ctrl+C, or run on another port in PowerShell: $env:PORT=3002; npm run dev`);
