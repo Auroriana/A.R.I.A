@@ -1,6 +1,6 @@
 # Aria: your private Obsidian knowledge assistant
 
-The starter vault is ready in `vault/Aria Knowledge`. A Vercel-ready chat website is now implemented in `web/`; see [website setup](web/README.md). The cloud SQL migration, live API connection, and deployment still need account setup. Automated vault synchronization is not implemented.
+The starter vault is ready in `vault/Aria Knowledge`. The website in `web/` includes a folder-based notes workspace, linked references, tabbed editing, formatted source excerpts, and resumable research. See [website setup](web/README.md) and [automatic Obsidian sync setup](docs/OBSIDIAN-SYNC.md). The sync installer is prepared; vault pairing and activation are a separate one-time setup.
 
 ## Start here
 

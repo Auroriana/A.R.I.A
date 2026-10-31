@@ -9,16 +9,16 @@ const scenario='Authenticated - Customer came in asking - My husband is at the d
 
 test('authenticated multi-intent case expands beyond the first authentication document and follows new references',async()=>{
   const requests=[],queries=[];
-  const replies=[plan(['Third Party Authorization','Add vehicle coverage','ID card delivery','Payment history autopay']),plan(['Automatic payment bank disclosure']),{answer:'Proceed with the completed identity check. Check third-party authority [S2], clarify coverage [S3], then delivery [S4] and billing [S5]. Autopay disclosure requires [S6].'}];
+  const replies=[plan(['Third Party Authorization','Add vehicle coverage','ID card delivery','Payment history autopay']),plan(['Automatic payment bank disclosure']),plan([]),{answer:'Proceed with the completed identity check. Check third-party authority [S2], clarify coverage [S3], then delivery [S4] and billing [S5]. Autopay disclosure requires [S6].'}];
   const results=[[passage(1,'Authentication Process')],[passage(1),passage(2,'Third Party Authorization')],[passage(3,'Add vehicle')],[passage(4,'ID card delivery')],[passage(5,'Billing')],[passage(6,'Bank disclosure')]];
   const result=await researchVault({message:scenario,search:async(q,options)=>{queries.push({q,...options});return results.shift();},generate:async request=>{requests.push(request);return replies.shift();}});
   assert.equal(queries.length,6);assert.equal(queries[0].initial,true);assert.ok(queries.slice(1).every(q=>!q.initial));
-  assert.equal(requests.length,3);assert.equal(result.sources.length,6);
+  assert.equal(requests.length,4);assert.equal(result.sources.length,6);
   assert.deepEqual(result.sources.map(s=>s.id),['S1','S2','S3','S4','S5','S6']);
   const final=JSON.parse(requests.at(-1).contents[0].parts[0].text);
   assert.equal(final.operatorMessage,scenario);assert.equal(final.evidence[0].title,'Authentication Process');
   assert.equal(final.evidence.at(-1).id,'S6');
-  assert.equal(result.research.planningCalls,2);
+  assert.equal(result.research.planningCalls,3);
 });
 
 test('empty initial retrieval can recover with a focused search',async()=>{
@@ -43,21 +43,22 @@ test('duplicate queries and duplicate passages do not consume unbounded searches
   assert.equal(searches,2);assert.equal(result.sources.length,1);assert.equal(calls,3);
 });
 
-test('round and source budgets bound expansion even when the model always requests more',async()=>{
+test('research continues beyond two rounds and 24 sources until the planner finishes',async()=>{
   let searches=0,calls=0;
   const result=await researchVault({message:'Question',search:async()=>{const n=searches++;return Array.from({length:4},(_,i)=>passage(n*4+i));},generate:async request=>{
-    if(calls++<2)return plan(Array.from({length:4},(_,i)=>`query ${calls} ${i}`));
+    if(calls++<5)return plan(Array.from({length:4},(_,i)=>`query ${calls} ${i}`));
+    if(calls===6)return plan([]);
     const evidence=JSON.parse(request.contents[0].parts[0].text).evidence;
-    assert.equal(evidence.length,RAG_LIMITS.sources);return {answer:'Answer [S24].'};
+    assert.equal(evidence.length,84);return {answer:'Answer [S84].'};
   }});
-  assert.equal(searches,9);assert.equal(calls,3);assert.equal(result.sources.length,24);
-  assert.ok(result.research.warnings.some(w=>w.includes('Evidence limit')));
+  assert.equal(searches,21);assert.equal(calls,7);assert.equal(result.sources.length,84);
+  assert.deepEqual(result.research.warnings,[]);
 });
 
 test('evidence character budget preserves complete passages',async()=>{
   let calls=0;
   const result=await researchVault({message:'Question',search:async()=>Array.from({length:24},(_,i)=>passage(i,String(i),'x'.repeat(3000))),generate:async()=>++calls===1?plan([]):{answer:'Answer [S20].'}});
-  assert.equal(result.sources.length,20);assert.ok(result.sources.every(s=>s.excerpt.length===3000));
+  assert.equal(result.sources.length,24);assert.ok(result.sources.every(s=>s.excerpt.length===3000));
 });
 
 test('malformed or truncated plans stop research visibly without treating model text as a query',async()=>{
@@ -109,7 +110,8 @@ test('API keeps all model-driven searches in the authenticated selected vault an
   assert.equal(res.statusCode,200);assert.equal(response.research.searches,2);
   assert.equal(events.filter(x=>x==='reserve').length,3);
   events.forEach((event,i)=>{if(event==='generate')assert.equal(events[i-1],'reserve');});
-  assert.ok(bodies.every(b=>!JSON.stringify(b).includes('DELETED SECRET EVIDENCE')));
+  assert.ok(bodies.every(b=>JSON.parse(b.contents[0].parts[0].text).conversationMemory[0].text==='DELETED SECRET EVIDENCE'));
+  assert.ok(bodies.every(b=>!JSON.stringify(JSON.parse(b.contents[0].parts[0].text).evidence).includes('DELETED SECRET EVIDENCE')));
   assert.ok(bodies.every(b=>JSON.parse(b.contents[0].parts[0].text).operatorMessage===scenario));
 });
 

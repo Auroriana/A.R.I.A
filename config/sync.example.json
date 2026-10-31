@@ -1,0 +1,10 @@
+{
+  "intervalSeconds": 30,
+  "vaults": [
+    {
+      "localPath": "C:/Users/Ataraxia/Desktop/Aria/vault/Aria Knowledge",
+      "cloudName": "Aria Knowledge",
+      "createCloudVault": false
+    }
+  ]
+}

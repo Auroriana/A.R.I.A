@@ -1,7 +1,10 @@
 import {models,validateChat} from '../lib/models.js';
 import {noteRoutes} from '../lib/notes-api.js';
 import {gemini,geminiStream,embed} from '../lib/providers.js';
-import {researchVault,CONCISE_INSTRUCTION} from '../lib/rag.js';
+import {researchVault,researchStep,createResearchState,CONCISE_INSTRUCTION} from '../lib/rag.js';
+import {sealCheckpoint,openCheckpoint,requestHash} from '../lib/checkpoint.js';
+import {proposeLayout} from '../lib/note-format.js';
+import {cleanContent} from '../lib/notes.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
 async function sb(route,token,body,method=body?'POST':'GET') {
@@ -11,9 +14,9 @@ async function sb(route,token,body,method=body?'POST':'GET') {
 }
 function cookie(req){return (req.headers.cookie??'').split(';').map(v=>v.trim()).find(v=>v.startsWith('aria_session='))?.slice(13);}
 function setCookie(res,value,age){res.setHeader('Set-Cookie',`aria_session=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${process.env.VERCEL?'; Secure':''}`);}
-async function readBody(req){
-  if(req.body) {if(Buffer.byteLength(JSON.stringify(req.body))>40000)throw fail('Request too large.',413);return typeof req.body==='string'?JSON.parse(req.body):req.body;}
-  let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>40000)throw fail('Request too large.',413);}return raw?JSON.parse(raw):{};
+async function readBody(req,limit=40000){
+  if(req.body) {if(Buffer.byteLength(JSON.stringify(req.body))>limit)throw fail('Request too large.',413);return typeof req.body==='string'?JSON.parse(req.body):req.body;}
+  let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>limit)throw fail('Request too large.',413);}return raw?JSON.parse(raw):{};
 }
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');
@@ -43,8 +46,21 @@ export default async function handler(req,res){
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
 	if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
+    if(req.method==='POST'&&route==='/api/note-format'){
+      const body=await readBody(req,420000),content=cleanContent(body.content);
+      if(!models.some(m=>m.id===body.model))throw fail('Choose a supported model.');
+      if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled.',503);
+      const layout=await proposeLayout(content,async request=>{
+        const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:body.model,p_tokens:Buffer.byteLength(JSON.stringify(request))+8192});
+        if(!ok)throw fail('Model quota reached. Your text has not changed.',429);
+        return gemini(body.model,request);
+      });
+      return send(200,{layout});
+    }
     if(req.method!=='POST'||route!=='/api/chat')throw fail('Not found.',404);
-    const {model,message,mode,history,vault,concise}=validateChat(await readBody(req));
+    const incoming=await readBody(req,4_200_000);
+    const validated=validateChat(incoming);
+    const {model,message,mode,history,vault,concise,files}=validated;
     if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled. Configure a Free-tier API key and confirm its billing tier.',503);
     if(req.headers.accept?.includes('application/x-ndjson')){
       streaming=true;res.setHeader('Content-Type','application/x-ndjson');res.setHeader('X-Accel-Buffering','no');res.flushHeaders?.();
@@ -56,7 +72,9 @@ export default async function handler(req,res){
     const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
     const generate=async (request,{phase='answer',round}={})=>{
       if(model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:phase==='planning'?'medium':'low'}}};
-      await reserve(model,Buffer.byteLength(JSON.stringify(request))+request.generationConfig.maxOutputTokens);
+      // Base64 bytes aren't text tokens. Reserve a conservative per-attachment allowance.
+      const textRequest=JSON.stringify(request, (key,value)=>key==='inlineData'?{mimeType:value.mimeType}:value);
+      await reserve(model,Buffer.byteLength(textRequest)+files.length*4096+request.generationConfig.maxOutputTokens);
       if(!streaming)return gemini(model,request);
       if(generationController.signal.aborted)throw fail('The overall response time limit was reached or the chat connection closed.',504);
       const callId=++generationId;let hasSummary=false;
@@ -76,10 +94,16 @@ export default async function handler(req,res){
         return sb('/rest/v1/rpc/aria_search',token,{p_query:query,p_embedding:vector,p_vault:vault});
       };
       // Old assistant answers and deleted evidence never become fresh vault evidence.
-      return send(200,{...await researchVault({message,search,generate,concise,onProgress}),model});
+      if(incoming.resumable===true){
+        const hash=requestHash(validated),state=incoming.continuation?openCheckpoint(incoming.continuation,user.id,hash):createResearchState();
+        const next=await researchStep({state,message,search,generate,concise,onProgress,files,history});
+        if(next.result)return send(200,{...next.result,model});
+        return send(200,{continuation:sealCheckpoint(next.state,user.id,hash),research:{searches:next.state.searches.length,planningCalls:next.state.planningCalls},model});
+      }
+      return send(200,{...await researchVault({message,search,generate,concise,onProgress,files,history}),model});
     }
     const system='You are Aria, a thoughtful personal research assistant. This is general chat; you have not searched the user’s vault. Be clear about uncertainty.'+(concise?CONCISE_INSTRUCTION:'');
-    const contents=[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message}]}];
+    const contents=[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message},...files]}];
     const request={systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:2048}};
     onProgress({stage:'answering',message:'Preparing your answer.'});
     const result=await generate(request);

@@ -1,3 +1,4 @@
+import {noteIndexText} from './note-index.js';
 export const MAX_NOTE_CHARS = 200000;
 const DENY = /^(98 private|80 templates)(\/|$)/i;
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
@@ -46,9 +47,7 @@ function split(body, max) {
 
 // Heading-aware chunks of at most `max` characters (DB limit is 3,000). No overlap, no embeddings.
 export function chunkMarkdown(md, max = 2500) {
-  let text = normalize(md);
-  const fm = text.match(/^---\n[\s\S]*?\n---(\n|$)/);
-  if (fm) text = text.slice(fm[0].length);
+  let text = noteIndexText(normalize(md));
   const out = [];
   let heading = '', buf = [], fence = false;
   const flush = () => {

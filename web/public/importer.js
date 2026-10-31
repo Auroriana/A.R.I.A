@@ -127,7 +127,7 @@ export function verifyPlan(original, plan) {
   return kept === original && plan.parts.every(p => p.pieces.map(x => x.text).join('') === p.doc);
 }
 
-export async function planImport(text, { title = '', folder = '00 Inbox', ai = true, now = new Date() } = {}) {
+export async function planImport(text, { title = '', folder = '00 Inbox', ai = true, sectionLabels = true, now = new Date() } = {}) {
   const problem = checkText(text);
   if (problem) throw new Error(problem);
   const warnings = [];
@@ -145,7 +145,7 @@ export async function planImport(text, { title = '', folder = '00 Inbox', ai = t
   let labels = 0, longBlocks = 0;
   for (const u of units) {
     u.body = a.lines.slice(u.from, u.to).join('');
-    u.label = labelFor(u, k);
+    u.label = sectionLabels ? labelFor(u, k) : null;
     u.labelText = u.label ? `${'#'.repeat(u.label.level)} ${u.label.text}\n\n` : '';
     if (u.label) labels++;
     if (u.body.length > LIMITS.unitChars) longBlocks++;

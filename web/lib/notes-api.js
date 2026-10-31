@@ -1,4 +1,5 @@
 import { cleanPath, cleanContent, chunkMarkdown, isUuid } from './notes.js';
+import { aliasesOf, extractLinks } from '../public/note-model.js';
 
 const vaultOf = (v, fail) => { if (!isUuid(v)) throw fail('Choose a vault.', 400); return v.toLowerCase(); };
 
@@ -34,7 +35,12 @@ export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
   }
   if (req.method === 'GET' && route === '/api/notes') {
     const vault = vaultOf(url.searchParams.get('vault'), fail);
-    const notes = await sb(`/rest/v1/aria_notes?select=path,title,version,updated_at,ai_enabled,origin&deleted=eq.false&vault_id=eq.${vault}&order=path.asc&limit=1000`, token);
+    const notes = [];
+    for(let offset=0;;offset+=500){
+      const rows=await sb(`/rest/v1/aria_notes?select=path,title,content,version,updated_at,ai_enabled,origin&deleted=eq.false&vault_id=eq.${vault}&order=path.asc&limit=500&offset=${offset}`,token);
+      for(const {content,...n} of rows)notes.push({...n,aliases:aliasesOf(content??''),references:extractLinks(content??'')});
+      if(rows.length<500)break;
+    }
     send(200, { notes });
     return true;
   }

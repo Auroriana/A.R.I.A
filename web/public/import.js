@@ -1,8 +1,12 @@
-import { planImport, checkText, LIMITS } from '/importer.js';
+import { planImport, verifyPlan, checkText, LIMITS } from '/importer.js';
 import { mountVaults } from '/vaults.js';
+import { captureRichPaste } from '/rich-paste.js';
+import { renderMarkdown } from '/note-renderer.js';
+import { withLayout, splitNote } from '/note-model.js';
 const $ = id => document.getElementById(id);
 const num = n => n.toLocaleString('en-US');
 let plan = null, planned = '', vault = '', busy = false;
+let importedLayout = null;
 
 async function api(route, body) {
   const r = await fetch(`/api/${route}`, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : {}, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -16,6 +20,7 @@ function vaultName() { return $('vault').selectedOptions[0]?.text ?? ''; }
 function refresh() {
   const text = $('paste').value;
   $('preview').disabled = busy || !text.trim();
+  $('format-import').disabled = busy || !text.trim() || text.length > 200000;
   $('import').disabled = busy || !plan || planned !== text || !vault;
   $('import').textContent = vault ? `Import into “${vaultName()}”` : 'Import';
   $('count').textContent = text ? `${num(text.length)} characters · limit ${num(LIMITS.maxBytes)} bytes` : '';
@@ -25,6 +30,7 @@ const KINDS = { markdown: 'Markdown with headings (your headings are the section
 
 function row(dl, label, value) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = label; dd.textContent = value; dl.append(dt, dd); }
 function render(p) {
+  renderMarkdown($('formatted-preview'),p.parts[0].doc);
   const dl = $('facts'); dl.replaceChildren();
   row(dl, 'Detected', KINDS[p.kind]);
   row(dl, 'Your text', `${num(p.chars)} characters, ${num(p.lineCount)} lines`);
@@ -46,7 +52,17 @@ function render(p) {
   $('result').hidden = false;
 }
 
-$('paste').oninput = () => { $('done').hidden = true; refresh(); };
+$('paste').oninput = () => { importedLayout=null; plan=null; $('done').hidden = true; refresh(); };
+$('paste').onpaste=e=>{
+  const rich=captureRichPaste(e.clipboardData);if(!rich)return;
+  const input=$('paste');
+  // Preserve all clipboard text, and retain style positions only for a full replacement.
+  if(!input.value||input.selectionStart===0&&input.selectionEnd===input.value.length){e.preventDefault();input.value=rich.text;importedLayout=rich.layout;plan=null;refresh();}
+};
+$('format-import').onclick=async()=>{
+  const text=$('paste').value;setBusy(true);status('Aria is suggesting a layout. The text will stay unchanged.');
+  try{const {models}=await api('status');const r=await api('note-format',{content:text,model:models[0].id});if($('paste').value!==text)throw new Error('The text changed while formatting. Try again.');importedLayout={...r.layout,spans:importedLayout?.spans??[]};plan=null;status('Layout ready. Preview to review it before importing.');}catch(e){status(e.message,true);}finally{setBusy(false);}
+};
 $('preview').onclick = async () => {
   const text = $('paste').value;
   $('done').hidden = true;
@@ -54,7 +70,19 @@ $('preview').onclick = async () => {
   if (err) { status(err, true); return; }
   setBusy(true); status('Formatting…');
   try {
-    plan = await planImport(text, { title: $('title').value, folder: $('folder').value, ai: $('ai').checked });
+    plan = await planImport(text, { title: $('title').value, folder: $('folder').value, ai: $('ai').checked, sectionLabels:false });
+    if(importedLayout){
+      let offset=0;
+      for(const part of plan.parts){
+        const original=part.pieces.filter(p=>!p.added).map(p=>p.text).join(''),prefix=splitNote(part.doc).body.length-original.length;
+        const firstLine=text.slice(0,offset).split('\n').length,lines=original.split('\n').length;
+        const spans=importedLayout.spans.filter(s=>s.end>offset&&s.start<offset+original.length).map(s=>({...s,start:Math.max(0,s.start-offset)+prefix,end:Math.min(original.length,s.end-offset)+prefix}));
+        const blocks=importedLayout.blocks.filter(b=>b.line>=firstLine&&b.line<firstLine+lines).map(b=>({...b,line:b.line-firstLine+1+prefix,...(b.endLine?{endLine:Math.min(lines,b.endLine-firstLine+1)+prefix}:{})})).filter(b=>!b.endLine||b.endLine>b.line);
+        const doc=withLayout(part.doc,{spans,blocks});part.pieces[0].text=doc.slice(0,doc.length-original.length);part.doc=doc;offset+=original.length;
+      }
+    }
+    if(!verifyPlan(text,plan))throw new Error('The original-text check failed. Nothing was imported.');
+    if(plan.parts.some(p=>p.doc.length>200000||new TextEncoder().encode(JSON.stringify(p.doc)).length>400000))throw new Error('Formatting makes a note too large to save. Import it in smaller sections.');
     planned = text; render(plan); status('');
   } catch (e) { plan = null; $('result').hidden = true; status(e.message, true); }
   finally { setBusy(false); }

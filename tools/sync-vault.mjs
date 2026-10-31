@@ -134,7 +134,7 @@ async function run(o) {
   for (const a of actions) if (!['adopt', 'forget'].includes(a.type)) console.log(`  ${a.type.padEnd(13)} ${a.path}`);
   if (!o.apply) { console.log('Dry run. Re-run with --apply to execute.'); return; }
 
-  const conflictsDir = path.join(root, '.local', 'aria-conflicts');
+  const conflictsDir = path.join(root, '.local', 'aria-conflicts', vaultId);
   let failures = 0;
   for (const a of actions) {
     const p = a.path;
@@ -166,14 +166,18 @@ async function run(o) {
         }
         const now = vault.files.get(p);
         // Re-check right before overwriting: Obsidian may have changed the file since the scan.
-        if (now) { const cur = sha(normalize(new TextDecoder('utf-8', { fatal: true }).decode(await readFile(path.join(vault.canonical, ...p.split('/')))))); if (cur !== now.hash) { console.warn(`  changed locally during sync, skipped: ${p}`); failures++; continue; } }
+        let currentHash;
+        try { currentHash=sha(normalize(new TextDecoder('utf-8',{fatal:true}).decode(await readFile(path.join(vault.canonical,...p.split('/')))))); } catch(e) { if(e.code!=='ENOENT')throw e; }
+        if(currentHash!==now?.hash){console.warn(`  changed locally during sync, skipped: ${p}`);failures++;continue;}
         await writeSafely(vault.canonical, p, content);
         state.notes[p] = { hash: content_hash, version };
       }
     } catch (e) { console.warn(`  error on ${p}: ${e.message}`); failures++; }
   }
   await mkdir(path.dirname(statePath), { recursive: true });
-  await writeFile(statePath, JSON.stringify(state, null, 1));
+  const stateTemp=statePath+'.tmp';
+  await writeFile(stateTemp, JSON.stringify(state, null, 1));
+  await rename(stateTemp,statePath);
   console.log(failures ? `Done with ${failures} item(s) needing attention.` : 'Sync complete.');
   if (failures) process.exitCode = 1;
 }

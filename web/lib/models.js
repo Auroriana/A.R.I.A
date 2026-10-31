@@ -17,6 +17,17 @@ export function validateChat(body) {
   if(body.concise!==undefined&&typeof body.concise!=='boolean')throw Object.assign(new Error('Concise must be a boolean.'),{status:400});
   const concise=body.concise??false;
   const history=body.history??[];
-  if(!Array.isArray(history)||history.length>8||history.some(m=>!['user','model'].includes(m.role)||typeof m.text!=='string'||m.text.length>6000)||JSON.stringify(history).length>18000) throw new Error('Conversation is too long. Start a new chat.');
-  return {model:model.id,message:body.message.trim(),mode:body.mode,history,vault,concise};
+  if(!Array.isArray(history)||history.length>200||history.some(m=>!['user','model'].includes(m.role)||typeof m.text!=='string'||m.text.length>40000)||JSON.stringify(history).length>180000) throw new Error('Conversation memory is too large for one request. Start a new chat.');
+  const files = body.files ?? [];
+  const badFile = () => Object.assign(new Error('Attach up to 4 PNG, JPEG, WebP or PDF files (about 2.8 MB total).'), {status:400});
+  if (!Array.isArray(files) || files.length > 4) throw badFile();
+  let bytes = 0;
+  for (const f of files) {
+    if (!f || !['image/png','image/jpeg','image/webp','application/pdf'].includes(f.mime) || typeof f.data !== 'string' || !f.data.length || f.data.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(f.data)) throw badFile();
+    bytes += f.data.length;
+    const b = Buffer.from(f.data, 'base64');
+    const valid = f.mime === 'image/png' ? b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : f.mime === 'image/jpeg' ? b[0] === 255 && b[1] === 216 && b[2] === 255 : f.mime === 'image/webp' ? b.toString('ascii',0,4) === 'RIFF' && b.toString('ascii',8,12) === 'WEBP' : b.toString('ascii',0,5) === '%PDF-';
+    if (!valid || bytes > 3_900_000) throw badFile();
+  }
+  return {model:model.id,message:body.message.trim(),mode:body.mode,history,vault,concise,files:files.map(({mime,data})=>({inlineData:{mimeType:mime,data}}))};
 }
