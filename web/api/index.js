@@ -1,10 +1,11 @@
 import {models,validateChat} from '../lib/models.js';
 import {noteRoutes} from '../lib/notes-api.js';
 import {gemini,geminiStream,embed} from '../lib/providers.js';
+import {describeVault} from '../lib/vault-describe.js';
 import {researchVault,researchStep,createResearchState,CONCISE_INSTRUCTION} from '../lib/rag.js';
 import {sealCheckpoint,openCheckpoint,requestHash} from '../lib/checkpoint.js';
 import {proposeLayout} from '../lib/note-format.js';
-import {cleanContent} from '../lib/notes.js';
+import {cleanContent,isUuid} from '../lib/notes.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
 async function sb(route,token,body,method=body?'POST':'GET') {
@@ -17,6 +18,12 @@ function setCookie(res,value,age){res.setHeader('Set-Cookie',`aria_session=${val
 async function readBody(req,limit=40000){
   if(req.body) {if(Buffer.byteLength(JSON.stringify(req.body))>limit)throw fail('Request too large.',413);return typeof req.body==='string'?JSON.parse(req.body):req.body;}
   let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>limit)throw fail('Request too large.',413);}return raw?JSON.parse(raw):{};
+}
+const authCache=new Map();
+async function verify(token){
+  const hit=authCache.get(token);if(hit&&hit.until>Date.now())return hit.user;
+  const user=await verify(token);
+  if(authCache.size>50)authCache.clear();authCache.set(token,{user,until:Date.now()+60000});return user;
 }
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');
@@ -46,6 +53,12 @@ export default async function handler(req,res){
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
 	if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
+    if(req.method==='GET'&&route==='/api/notes-stamp'){
+      const v=new URL(req.url,'http://localhost').searchParams.get('vault');
+      if(!isUuid(v))throw fail('Choose a vault.');
+      const rows=await sb(`/rest/v1/aria_notes?select=updated_at&vault_id=eq.${v.toLowerCase()}&order=updated_at.desc&limit=1`,token);
+      return send(200,{stamp:rows[0]?.updated_at??''});
+    }
     if(req.method==='POST'&&route==='/api/note-format'){
       const body=await readBody(req,420000),content=cleanContent(body.content);
       if(!models.some(m=>m.id===body.model))throw fail('Choose a supported model.');
@@ -56,6 +69,24 @@ export default async function handler(req,res){
         return gemini(body.model,request);
       });
       return send(200,{layout});
+    }
+    if(req.method==='POST'&&route==='/api/vault-describe'){
+      const body=await readBody(req),vault=isUuid(body.vault)?body.vault.toLowerCase():null;
+      if(!vault)throw fail('Choose a vault.');
+      if(!models.some(m=>m.id===body.model))throw fail('Choose a supported model.');
+      if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled.',503);
+      const vaults=await sb('/rest/v1/aria_vaults?select=id,name&order=created_at.asc',token),mine=vaults.find(v=>v.id===vault);
+      if(!mine)throw fail('Vault not found.',404);
+      // Only notes with AI search on are ever sent, and only their paths and headings.
+      const notes=await sb(`/rest/v1/aria_notes?select=path&deleted=eq.false&ai_enabled=eq.true&vault_id=eq.${vault}&order=path.asc&limit=400`,token);
+      const chunks=await sb(`/rest/v1/aria_chunks?select=title&vault_id=eq.${vault}&order=title.asc&limit=300`,token);
+      const description=await describeVault({vaultName:mine.name,otherVaults:vaults.filter(v=>v.id!==vault).map(v=>v.name),paths:notes.map(n=>n.path),headings:[...new Set(chunks.map(c=>c.title))]},async request=>{
+        if(body.model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'low'}}};
+        const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:body.model,p_tokens:Buffer.byteLength(JSON.stringify(request))+request.generationConfig.maxOutputTokens});
+        if(!ok)throw fail('Model quota reached. Nothing was changed.',429);
+        return gemini(body.model,request);
+      });
+      return send(200,{description});
     }
     if(req.method!=='POST'||route!=='/api/chat')throw fail('Not found.',404);
     const incoming=await readBody(req,4_200_000);
@@ -87,20 +118,24 @@ export default async function handler(req,res){
       onProgress({stage:'thought-end',callId,hasSummary});return result;
     };
     if(mode==='vault'){
-      const search=async(query,{initial})=>{
-        let vector=null;
-        // Follow-up queries are focused keyword searches; no extra embedding calls.
+      let vaultRows;
+      const loadVaults=async()=>vaultRows??=await sb('/rest/v1/rpc/aria_vault_overview',token,{}).catch(()=>[]);
+      const getOverview=async()=>(await loadVaults()).map(({id,...v})=>({...v,searchable:!vault||id===vault.toLowerCase()}));
+      const search=async(query,{initial,vault:target}={})=>{
+        let scope=vault,vector=null;
+        // Models may only pick among vaults inside the scope the user selected.
+        if(!scope&&target){const hit=(await loadVaults()).find(v=>v.name.trim().toLowerCase()===target.trim().toLowerCase());if(hit)scope=hit.id;}
         if(initial&&process.env.ENABLE_SEMANTIC_SEARCH==='true'){await reserve('gemini-embedding-2',Buffer.byteLength(query));vector=await embed(query);}
-        return sb('/rest/v1/rpc/aria_search',token,{p_query:query,p_embedding:vector,p_vault:vault});
+        return sb('/rest/v1/rpc/aria_search',token,{p_query:query,p_embedding:vector,p_vault:scope??null});
       };
       // Old assistant answers and deleted evidence never become fresh vault evidence.
       if(incoming.resumable===true){
         const hash=requestHash(validated),state=incoming.continuation?openCheckpoint(incoming.continuation,user.id,hash):createResearchState();
-        const next=await researchStep({state,message,search,generate,concise,onProgress,files,history});
+        const next=await researchStep({state,message,search,generate,concise,onProgress,files,history,overview:getOverview});
         if(next.result)return send(200,{...next.result,model});
         return send(200,{continuation:sealCheckpoint(next.state,user.id,hash),research:{searches:next.state.searches.length,planningCalls:next.state.planningCalls},model});
       }
-      return send(200,{...await researchVault({message,search,generate,concise,onProgress,files,history}),model});
+      return send(200,{...await researchVault({message,search,generate,concise,onProgress,files,history,overview:getOverview}),model});
     }
     const system='You are Aria, a thoughtful personal research assistant. This is general chat; you have not searched the user’s vault. Be clear about uncertainty.'+(concise?CONCISE_INSTRUCTION:'');
     const contents=[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message},...files]}];

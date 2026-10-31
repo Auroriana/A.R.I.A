@@ -33,3 +33,28 @@
 .chat-history-bar{display:flex;gap:8px;align-items:center;padding:10px 28px;border-bottom:1px solid #222}.chat-history-bar select{max-width:350px;flex:1;font-size:11px}.chat-history-bar button{font-size:11px;padding:3px 10px}.chat-history-bar small{color:#666;font-size:10px}.refs .ex{white-space:normal}.refs .open-source{font-size:10px;margin-top:8px}.refs .note-markdown{font-size:12px}.refs .note-markdown h1{font-size:19px}
 @media(max-width:860px){.notes-workspace{grid-template-columns:200px minmax(0,1fr)}.note-reading{padding:20px}.note-bar{padding:8px 14px}.reference-bar{padding:8px 16px}.note-bottom{padding:8px 12px}.view-modes button{padding:3px 6px}.note-content[data-mode=split]{flex-direction:column}.note-content[data-mode=split] .note-source{flex-basis:45%;border-bottom:1px solid #333}}
 @media(max-width:580px){.notes-workspace{grid-template-columns:1fr;position:relative}.file-explorer{position:absolute;inset:0 auto 0 0;width:235px;z-index:7;background:#080808;box-shadow:20px 0 30px #0009}.notes-workspace:not(.explorer-open) .file-explorer{display:none}.chat-history-bar{padding:8px 14px}.chat-history-bar small{display:none}.note-tabs{min-height:38px}.note-bar{gap:5px}.note-reading{padding:20px 18px}.note-bottom{flex-wrap:wrap}}
+/* tree + context menu */
+.tree-line{display:flex;align-items:center}.tree-line>.tree-row{flex:1;min-width:0}
+.row-add{border:0;background:none;color:#777;width:24px;height:24px;padding:0;font-size:16px;line-height:1;opacity:0;flex:none}
+.tree-line:hover .row-add,.row-add:focus-visible{opacity:1}@media(hover:none){.row-add{opacity:1}}
+.ctx{position:fixed;z-index:50;min-width:170px;display:flex;flex-direction:column;background:#0b0b0b;border:1px solid #555;box-shadow:0 10px 40px #000;padding:4px}
+.ctx button{border:0;text-align:left;padding:7px 12px;font-size:12px;color:#ddd;background:none}
+.ctx button:hover:not(:disabled){background:#222;color:#fff}
+.ctx button.danger{color:#f07575}.ctx button.danger:hover:not(:disabled){background:#2a1111;color:#ff9a9a}
+.chat-history-bar:not(:has(button:not([hidden]))){display:none}
+#al{white-space:pre-line;line-height:1.6}
+
+/* vault description dialog */
+#vdlg{width:min(480px,92vw)}
+#vdt{width:100%;resize:vertical;padding:9px;line-height:1.6;margin-top:4px}
+#vdc{display:block;margin:4px 0 0;color:#777;font-size:10px;text-align:right}
+#vdai{border-color:#777}
+
+/* checkboxes (the .sw switch keeps its own style) */
+input[type=checkbox]:not(.sw>input){appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 6px 0 0;padding:0;border:1px solid #666;border-radius:0;background:#000;display:inline-grid;place-content:center;vertical-align:-3px;cursor:pointer;transition:.15s}
+input[type=checkbox]:not(.sw>input)::after{content:"";width:9px;height:9px;background:#000;transform:scale(0);transition:.12s;clip-path:polygon(14% 44%,0 65%,50% 100%,100% 16%,80% 0%,43% 62%)}
+input[type=checkbox]:not(.sw>input):checked{background:#fff;border-color:#fff}
+input[type=checkbox]:not(.sw>input):checked::after{transform:scale(1)}
+input[type=checkbox]:not(.sw>input):hover:not(:disabled){border-color:#fff}
+input[type=checkbox]:disabled{opacity:.5;cursor:default}
+.note-properties label,.props label{display:inline-flex;align-items:center;gap:6px}

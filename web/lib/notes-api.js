@@ -18,7 +18,7 @@ async function readJson(req) {
 // Called by api/index.js after the owner session has been verified. Returns true if handled.
 export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
   if (req.method === 'GET' && route === '/api/vaults') {
-    send(200, { vaults: await sb('/rest/v1/aria_vaults?select=id,name&order=created_at.asc,name.asc', token) });
+    send(200, { vaults: await sb('/rest/v1/aria_vaults?select=id,name,description&order=created_at.asc,name.asc', token) });
     return true;
   }
   if (req.method === 'POST' && route === '/api/vault-create') {
@@ -59,12 +59,38 @@ export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
     const path = cleanPath(b.path);
     const content = cleanContent(b.content);
     if (!Number.isInteger(b.baseVersion) || b.baseVersion < 0) throw fail('baseVersion required.');
-    const r = await sb('/rest/v1/rpc/aria_save_note', token, { p_vault: vault, p_path: path, p_content: content, p_base_version: b.baseVersion, p_origin: 'web', p_chunks: chunkMarkdown(content) });
+    const save = v => sb('/rest/v1/rpc/aria_save_note', token, { p_vault: vault, p_path: path, p_content: content, p_base_version: v, p_origin: 'web', p_chunks: chunkMarkdown(content) });
+    let r = await save(b.baseVersion);
+    if (!r.ok && r.reason === 'conflict' && b.baseVersion === 0) {
+      const old = await sb(`/rest/v1/aria_notes?select=version,deleted&vault_id=eq.${vault}&path=eq.${encodeURIComponent(path)}`, token);
+      if (old[0]?.deleted) r = await save(old[0].version);
+    }
     if (!r.ok) {
       if (r.reason === 'conflict') return send(409, { error: 'This note changed elsewhere (Obsidian sync or another tab). Your text is still in the editor; copy it, reload the note, and merge.', version: r.version }), true;
       throw fail(r.reason === 'invalid_vault' ? 'Unknown vault.' : 'Note could not be saved.', r.reason === 'denied' ? 403 : 400);
     }
     send(200, { version: r.version, ai_enabled: r.ai_enabled });
+    return true;
+  }
+    if (req.method === 'POST' && route === '/api/vault-update') {
+    const b = await readJson(req), vault = vaultOf(b.vault, fail);
+    const description = typeof b.description === 'string' ? b.description.trim() : '';
+    if (description.length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(description)) throw fail('Description must be under 500 characters.');
+    const r = await sb('/rest/v1/rpc/aria_set_vault_description', token, { p_vault: vault, p_description: description });
+    if (!r.ok) throw fail('Vault not found.', 404);
+    send(200, { ok: true, description });
+    return true;
+  }
+  if (req.method === 'POST' && route === '/api/note-delete') {
+    const b = await readJson(req), vault = vaultOf(b.vault, fail), path = cleanPath(b.path);
+    if (!Number.isInteger(b.baseVersion) || b.baseVersion < 1) throw fail('baseVersion required.');
+    const r = await sb('/rest/v1/rpc/aria_delete_note', token, { p_vault: vault, p_path: path, p_base_version: b.baseVersion });
+    if (!r.ok) {
+      if (r.reason === 'conflict') return send(409, { error: 'This note changed elsewhere. Reload it before deleting.', version: r.version }), true;
+      if (r.reason === 'missing') throw fail('Note not found.', 404);
+      throw fail('Note could not be deleted.', r.reason === 'denied' ? 403 : 400);
+    }
+    send(200, { ok: true });
     return true;
   }
   return false;
