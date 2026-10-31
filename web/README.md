@@ -4,6 +4,14 @@ Dependency-free static frontend and Node.js API. All browser requests stay on yo
 
 See [current workspace, chat memory, screenshot input and resumable research](../docs/NOTES-WORKSPACE.md) for the implemented behavior and limits, and [automatic Obsidian sync](../docs/OBSIDIAN-SYNC.md) for one-time pairing.
 
+## Quick Note
+
+The **QUICK** tab captures up to 12,000 characters in Concise or Detailed mode, keeps an exact original, and files an organized copy. Only vaults explicitly enabled in **Notes → vault description → Allow Quick Note to file here** receive automatic placements. Uncertain or invalid model results go to the migration-created Unsorted vault. New notes start with AI search off; history provides the current search toggle, destination, original text, retry, and removal of pending/failed jobs.
+
+Apply migration `supabase/008_quick_notes.sql` after 007 **before deploying the updated app**. Then configure the background worker using [the Quick Note setup and verification guide](../docs/QUICK-NOTES.md). Browser kicks work with your current sign-in; filing after the app closes requires migration 009 plus the worker environment and Vault secrets. This release supplies those migrations; it does not automatically apply them to your hosted project.
+
+The browser saves an outbox before clearing the composer. A server acknowledgement means the queue is durable. Until then, reopen Aria in the same browser to resend; clearing browser storage discards unsent entries. Quick Note reserves the existing `gemini-3.5-flash-lite` quota shared with the chat planner and never falls back to the 20/day models. Failed attempts may call the model again, up to five attempts before manual Retry. There is no promise of one provider call across a crash/retry.
+
 ## Set up Supabase
 
 1. In SQL Editor, run `supabase/001_aria.sql` once. It creates owner-scoped, read-only approved passages plus persistent quota reservations and search functions. The supplied owner UUID is embedded in the quota function. This migration has not been run remotely.

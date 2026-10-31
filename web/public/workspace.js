@@ -15,9 +15,9 @@ export function mountWorkspace(root, { api, ask, confirm: confirmBox = async m =
     <div id="ns" class="note-message" role="status"></div><div id="note-content" class="note-content" data-mode="read"><div id="note-empty" class="note-blank"><h2>Your notes, connected.</h2><p>Open a note from the explorer.<br>Ctrl + click opens another tab.</p></div><div id="note-source" class="note-source" hidden><div class="format-tools"><button data-format="bold" title="Bold">B</button><button data-format="italic" title="Italic"><i>I</i></button><button data-format="heading" title="Heading">H</button><button data-format="link" title="Link a note">[[ ]]</button><button data-format="red">Red</button><button data-format="quote">“Quote”</button><button data-format="indent" title="Indent">⇥</button></div><textarea id="ed" spellcheck="false" aria-label="Note editor"></textarea></div><div id="note-reading" class="note-reading" hidden><div id="note-rendered"></div></div><div id="note-suggest" class="note-suggest" hidden></div></div>
     <div class="note-bottom"><span id="note-state">Select a note to begin.</span><button id="note-reload" hidden>Load saved version</button><button id="sv" disabled>Save</button></div></div></div>
     <div id="ctx" class="ctx" role="menu" hidden></div>
-    <dialog id="vdlg"><form id="vdf"><label id="vdl" for="vdt">Describe this vault so Aria knows when to search it</label><textarea id="vdt" rows="6" maxlength="500" spellcheck="true"></textarea><small id="vdc"></small><div id="vdm" class="ns" role="status" hidden></div><button type="button" id="vdai">✦ Let Aria write it</button><div class="ab"><button type="button" id="vdx">Cancel</button><button id="vdok">Save</button></div></form></dialog>`;
+    <dialog id="vdlg"><form id="vdf"><label id="vdl" for="vdt">Describe this vault so Aria knows when to search it</label><textarea id="vdt" rows="6" maxlength="500" spellcheck="true"></textarea><small id="vdc"></small><label><input type="checkbox" id="vdquick"> Allow Quick Note to file here</label><small id="vdquick-help"></small><div id="vdm" class="ns" role="status" hidden></div><button type="button" id="vdai">✦ Let Aria write it</button><div class="ab"><button type="button" id="vdx">Cancel</button><button id="vdok">Save</button></div></form></dialog>`;
   const $ = id => root.querySelector('#'+id), el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
-  let vault='', notes=[], tabs=[], active=null, folder='', expanded=new Set(), folders=[], mode='read', account='', loading=0, saving=false, descriptions=new Map(), cache=new Map(), inflight=new Map(), lastStamp=null;
+  let vault='', notes=[], tabs=[], active=null, folder='', expanded=new Set(), folders=[], mode='read', account='', loading=0, saving=false, descriptions=new Map(), quickVaults=new Map(), cache=new Map(), inflight=new Map(), lastStamp=null;
   const sessionKey=()=>`aria.workspace.${account}.${vault}`, folderKey=()=>`aria.folders.${account}.${vault}`;
   const dirty=t=>t&&t.content!==t.baseline;
   const status=s=>$('ns').textContent=s;
@@ -171,7 +171,7 @@ export function mountWorkspace(root, { api, ask, confirm: confirmBox = async m =
   // ---- vault description dialog (with "Let Aria write it")
   const vdNote=m=>{$('vdm').textContent=m;$('vdm').hidden=!m;};
   const vdCount=()=>{$('vdc').textContent=$('vdt').value.length+' / 500';};
-  $('vault-desc').onclick=()=>{if(!vault)return;$('vdlg').dataset.vault=vault;$('vdt').value=descriptions.get(vault)??'';vdCount();vdNote('');$('vdlg').showModal();$('vdt').focus();};
+  $('vault-desc').onclick=()=>{if(!vault)return;$('vdlg').dataset.vault=vault;$('vdt').value=descriptions.get(vault)??'';vdCount();vdNote('');$('vdquick').checked=quickVaults.get(vault)?.allow_auto_file??false;$('vdquick').disabled=!!quickVaults.get(vault)?.is_unsorted;$('vdquick-help').textContent=quickVaults.get(vault)?.is_unsorted?'Unsorted always accepts uncertain quick notes.':'Shares this vault’s name, description and eligible folder names for filing.';$('vdlg').showModal();$('vdt').focus();};
   $('vdt').oninput=vdCount;
   $('vdx').onclick=()=>$('vdlg').close();
   $('vdai').onclick=async()=>{
@@ -182,7 +182,7 @@ export function mountWorkspace(root, { api, ask, confirm: confirmBox = async m =
   };
   $('vdf').onsubmit=async e=>{
     e.preventDefault();const id=$('vdlg').dataset.vault,text=$('vdt').value.trim();$('vdok').disabled=true;
-    try{await api('vault-update',{vault:id,description:text});descriptions.set(id,text);const o=[...$('nv').options].find(o=>o.value===id);if(o)o.title=text;$('vdlg').close();status('Vault description saved.');}
+    try{await api('vault-update',{vault:id,description:text});await api('vault-quick',{vault:id,allow:$('vdquick').checked});quickVaults.set(id,{...quickVaults.get(id),allow_auto_file:$('vdquick').checked});descriptions.set(id,text);const o=[...$('nv').options].find(o=>o.value===id);if(o)o.title=text;$('vdlg').close();status('Vault description saved.');}
     catch(err){vdNote(err.message);}
     finally{$('vdok').disabled=false;}
   };
@@ -203,11 +203,11 @@ export function mountWorkspace(root, { api, ask, confirm: confirmBox = async m =
     }catch(e){status(e.message);}
   },15000);
   return {
-    async init(vaults,identity){account=identity??'owner';descriptions=new Map(vaults.map(v=>[v.id,v.description??'']));$('nv').replaceChildren(...vaults.map(v=>{const o=new Option(v.name,v.id);o.title=v.description??'';return o;}));if(vaults.length)await switchVault(vaults[0].id);},
+    async init(vaults,identity){account=identity??'owner';quickVaults=new Map(vaults.map(v=>[v.id,v]));descriptions=new Map(vaults.map(v=>[v.id,v.description??'']));$('nv').replaceChildren(...vaults.map(v=>{const o=new Option(v.name,v.id);o.title=v.description??'';return o;}));if(vaults.length)await switchVault(vaults[0].id);},
     refresh:loadList,
     async open(path,vaultId){if(vaultId&&vaultId!==vault){$('nv').value=vaultId;await switchVault(vaultId);}await openNote(path,{newTab:true});},
     async openReference(ref,from,vaultId){if(vaultId&&vaultId!==vault){$('nv').value=vaultId;await switchVault(vaultId);}await follow(resolveLink(ref,from,notes),{ctrlKey:true});},
-    clear(){for(const option of $('nv').options){try{sessionStorage.removeItem(`aria.workspace.${account}.${option.value}`);}catch{}}tabs=[];active=null;notes=[];vault='';cache.clear();inflight.clear();descriptions=new Map();activate(null);},
+    clear(){for(const option of $('nv').options){try{sessionStorage.removeItem(`aria.workspace.${account}.${option.value}`);}catch{}}tabs=[];active=null;notes=[];vault='';cache.clear();inflight.clear();descriptions=new Map();quickVaults=new Map();activate(null);},
     get notes(){return notes;}, get vault(){return vault;}
   };
 }

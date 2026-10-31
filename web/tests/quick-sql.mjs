@@ -1,0 +1,85 @@
+// Optional integration check, no production DB or credentials used.
+// npm install --prefix .local/quick-test --no-save --package-lock=false --ignore-scripts @electric-sql/pglite
+// node web/tests/quick-sql.mjs
+import {PGlite} from '../../.local/quick-test/node_modules/@electric-sql/pglite/dist/index.js';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {composeQuickNote} from '../lib/quick-note.js';
+const db=new PGlite();
+const owner='2b0adefe-04f4-4f39-9332-d0287953096b';
+const scalar=async(sql,params=[])=>(await db.query(sql,params)).rows[0]?.v;
+const rpc=async(name,...args)=>scalar(`select public.${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) v`,args);
+try {
+ await db.exec(`create role anon; create role authenticated;
+ create schema auth; create table auth.users(id uuid primary key);
+ insert into auth.users values('${owner}');
+ create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+ grant usage on schema auth to authenticated;
+ select set_config('request.jwt.claim.sub','${owner}',false);
+ create table public.aria_chunks(id uuid primary key default gen_random_uuid(),owner_id uuid,title text,source_path text,content text,ai_enabled boolean);
+ `);
+ const notes=await readFile(new URL('../supabase/002_notes.sql',import.meta.url),'utf8');
+ await db.exec(notes.slice(notes.indexOf('create table public.aria_notes'),notes.indexOf('-- Optimistic-concurrency save.')));
+ const vaults=await readFile(new URL('../supabase/004_vaults.sql',import.meta.url),'utf8');
+ await db.exec(vaults.slice(vaults.indexOf('create table if not exists public.aria_vaults'),vaults.indexOf('-- Old signatures')));
+ await db.exec(vaults.slice(vaults.indexOf('create or replace function public.aria_create_vault'),vaults.indexOf('-- p_vault null')));
+ await db.exec("alter table public.aria_vaults add column description text not null default '';");
+ const sql=await readFile(new URL('../supabase/008_quick_notes.sql',import.meta.url),'utf8');
+ await db.exec(sql);
+ await db.exec('create function public.aria_quick_tick() returns void language sql as $$select$$; revoke all on function public.aria_quick_tick() from public,anon,authenticated;');
+ await db.exec(sql);
+ assert.equal(await scalar("select has_function_privilege('authenticated','public.aria_quick_tick()','execute') v"),false,'rerunning 008 must not grant access to the admin cron tick');
+ assert.equal(await scalar('select count(*)::int v from public.aria_vaults where is_unsorted'),1,'migration reruns once');
+ const fallback=await scalar('select id v from public.aria_vaults where is_unsorted');
+ const target=await scalar('select id v from public.aria_vaults where not is_unsorted');
+ await db.exec('set role authenticated');
+ await assert.rejects(db.query('update public.aria_quick_notes set text=$1',['tamper']),/permission denied/);
+ await assert.rejects(db.query('select public.aria_quick_owner()').then(async()=>{await db.exec("select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false)");return rpc('aria_quick_claim');}),/Access denied/);
+ assert.deepEqual((await db.query('select * from public.aria_quick_notes')).rows,[]);
+ await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+ const key=crypto.randomUUID(),text='  Keep\r\n42.50 exact.  ';
+ const a=await rpc('aria_quick_enqueue',key,text,'detailed');
+ assert.equal((await rpc('aria_quick_enqueue',key,text,'detailed')).id,a.id);
+ assert.equal((await rpc('aria_quick_enqueue',key,'changed','detailed')).reason,'key_reused');
+ let job=await rpc('aria_quick_claim');assert.equal(job.attempts,1);
+ assert.equal(await rpc('aria_quick_claim'),null,'overlapping worker cannot claim');
+ const plan={title:'Test',body:'42.50',vault:fallback,folder:''},content=composeQuickNote(job,plan);
+ assert.equal((await rpc('aria_quick_finish',job.id,job.lease_token,target,'Test.md',content,.95)).reason,'invalid_vault');
+ await db.exec('reset role');
+ await db.query("update public.aria_quick_notes set locked_at=now()-interval '6 minutes' where id=$1",[job.id]);
+ await db.exec('set role authenticated');
+ const replacement=await rpc('aria_quick_claim');assert.notEqual(replacement.lease_token,job.lease_token);assert.equal(replacement.attempts,2);
+ assert.equal((await rpc('aria_quick_finish',job.id,job.lease_token,fallback,'Test.md',content,.95)).reason,'stale');
+ assert.equal((await rpc('aria_quick_fail',job.id,job.lease_token,'late failure',60)).ok,false);
+ job=replacement;
+ assert.equal((await rpc('aria_quick_finish',job.id,job.lease_token,fallback,'Test.md',content,.95)).ok,true);
+ assert.equal((await rpc('aria_quick_finish',job.id,job.lease_token,fallback,'Test (2).md',content,.95)).reason,'stale');
+ assert.equal(await scalar('select count(*)::int v from public.aria_notes'),1,'atomic finish cannot create a duplicate');
+ assert.equal(await scalar('select content v from public.aria_notes'),content);
+ let history=await rpc('aria_quick_list',0);assert.equal(history[0].ai_enabled,false);assert.equal(history[0].status,'filed');
+ assert.equal((await rpc('aria_folder_map')).length,1,'only fallback until opted in');
+ await rpc('aria_set_vault_quick',target,true);
+ // Seed ordinary folders + forbidden nested folders; only directory names may leave DB.
+ await db.exec('reset role');
+ for(const p of ['Ideas/One.md','Ideas/Sub/Two.md','Ideas/98 Private/Secret.md','99 Archive/Old.md'])await rpc('aria_save_note',target,p,'# Seed',0,'web','[]');
+ await db.exec('set role authenticated');
+ const map=await rpc('aria_folder_map'),folders=map.find(x=>x.id===target).folders;
+ assert.deepEqual(folders,['Ideas','Ideas/Sub']);assert.ok(!JSON.stringify(map).includes('Secret'));
+ // Move uses the workspace's copy-then-delete pattern; history follows the frontmatter ID.
+ await db.exec('reset role');
+ await rpc('aria_save_note',target,'Ideas/Moved.md',content.replace('ai_enabled: false','ai_enabled: true'),0,'web',JSON.stringify([{heading:'Test',content:'42.50'}]));
+ await rpc('aria_delete_note',fallback,'Test.md',1);
+ await db.exec('set role authenticated');
+ history=await rpc('aria_quick_list',0);assert.equal(history[0].path,'Ideas/Moved.md');assert.equal(history[0].ai_enabled,true);assert.equal(history[0].note_deleted,false);
+ await db.exec('reset role');await rpc('aria_delete_note',target,'Ideas/Moved.md',1);await db.exec('set role authenticated');
+ assert.equal((await rpc('aria_quick_list',0))[0].note_deleted,true);
+ const b=await rpc('aria_quick_enqueue',crypto.randomUUID(),'Retry me','concise');
+ job=await rpc('aria_quick_claim');
+ assert.equal(job.id,b.id);await rpc('aria_quick_fail',job.id,job.lease_token,'temporary',60);
+ assert.equal(await rpc('aria_quick_claim'),null,'backoff respected');
+ await db.exec('reset role');await db.query("update public.aria_quick_notes set status='processing',attempts=5,locked_at=now()-interval '6 minutes' where id=$1",[b.id]);await db.exec('set role authenticated');
+ assert.equal(await rpc('aria_quick_claim'),null);assert.equal((await rpc('aria_quick_list',0)).find(n=>n.id===b.id).status,'failed');
+ assert.equal((await rpc('aria_quick_retry',b.id)).ok,true);assert.equal((await rpc('aria_quick_delete',b.id)).ok,true);
+ assert.equal((await rpc('aria_quick_list',0)).some(n=>n.id===b.id),false);assert.equal(await rpc('aria_quick_claim'),null);
+ console.log('SQL checks passed: repeatable migration, RLS, owner checks, idempotency, serial claims, stale leases, atomic finish, opt-in map, moved/deleted history, backoff, max attempts, retry and deletion.');
+} finally {await db.close();}

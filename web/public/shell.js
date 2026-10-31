@@ -1,10 +1,12 @@
 import {renderMarkdown,highlightClaim} from '/note-renderer.js';
 import {mountWorkspace} from '/workspace.js';
+import {mountQuick} from '/quick.js';
 import {conversationMemory,listChats,saveChat,deleteChat} from '/chat-store.js';
 
 const $=id=>document.getElementById(id),el=(t,x)=>{const n=document.createElement(t);if(x!==undefined)n.textContent=x;return n};
 let history=[],signedIn=false,busy=false,cfg,first=true,owner="",currentChat=null,chatController=null;
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
+const quick=mountQuick($('quick'),{api,confirm:confirmAction,open:async(path,vault)=>{tab(true);await workspace.open(path,vault);}});
 async function api(p,b){const r=await fetch('/api/'+p,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
 async function chat(body,on){
  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal:chatController?.signal});
@@ -66,7 +68,7 @@ function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.c
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
  const d=el('div');d.className='pg off';d.innerHTML=DS+'DEEPSEEK · OFF';p.append(d)}
 function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('mp').title=m?.name||'';}
-async function acct(email){signedIn=true;owner=email;$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();if(location.hash==='#notes')tab(true);}
+async function acct(email){signedIn=true;owner=email;$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();quick.init(owner);if(location.hash==='#notes')tab(true);if(location.hash==='#quick')tab('quick');}
 async function loadVaults(){try{const{vaults}=await api('vaults');const v=$('vault');v.replaceChildren(new Option('All vaults','all'));for(const x of vaults)v.append(new Option(x.name,x.id));await workspace.init(vaults,owner);}catch(e){err(e.message)}}
 function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');$('vault').hidden=v!=='vault';if(currentChat){currentChat.mode=v;persistChat();}}
 $('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode('vault');
@@ -76,7 +78,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.pick'))$('pm').hidd
 $('pt').onclick=()=>$('app').classList.toggle('pt');
 $('skip').onclick=()=>$('login').close();
 $('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{await acct((await api('login',{email:$('email').value,password:$('pw').value})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
-$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();workspace.clear();owner='';currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
+$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();workspace.clear();quick.clear();owner='';currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 
 function blankChat(){return {id:crypto.randomUUID(),title:'New conversation',updated:Date.now(),messages:[],mode:$('mode').value,vault:$('vault').value||'all',model:$('model').value,pending:null};}
@@ -141,8 +143,8 @@ function ask(label,val=''){return new Promise(ok=>{const d=$('ask');let v=null;$
 function confirmAction(label,okText='Confirm'){return new Promise(ok=>{const d=$('ask');let v=false;$('al').textContent=label;$('av').hidden=true;$('ao').textContent=okText;
  d.onclose=()=>{$('av').hidden=false;$('ao').textContent='OK';ok(v)};$('af').onsubmit=e=>{e.preventDefault();v=true;d.close()};$('ac').onclick=()=>d.close();d.showModal()})}
 // ---- app views; note drafts are kept independently of chat navigation.
-function tab(n){$('ht').hidden=n;$('chat').hidden=n;$('notes').hidden=!n;$('app').classList.toggle('nm',n);$('tc').classList.toggle('on',!n);$('tn').classList.toggle('on',n);location.hash=n?'notes':'chat';if(n&&signedIn)workspace.refresh().catch(e=>err(e.message));}
-$('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);
+function tab(n){const q=n==='quick',notes=n===true,other=q||notes;$('ht').hidden=other;$('chat').hidden=other;$('notes').hidden=!notes;$('quick').hidden=!q;$('app').classList.toggle('nm',other);$('tc').classList.toggle('on',!other);$('tn').classList.toggle('on',notes);$('tq').classList.toggle('on',q);location.hash=q?'quick':notes?'notes':'chat';if(notes&&signedIn)workspace.refresh().catch(e=>err(e.message));if(q&&signedIn)quick.refresh();}
+$('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);$('tq').onclick=()=>tab('quick');
 try{$('concise').checked=localStorage.getItem('aria.concise')==='true';}catch{}
 $('concise').onchange=()=>{try{localStorage.setItem('aria.concise',String($('concise').checked));}catch{}};
 const app=$('app');try{const s=localStorage.getItem('aria.history.collapsed');if(s===null?matchMedia('(max-width:860px)').matches:s==='true')app.classList.add('hc')}catch{}

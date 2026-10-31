@@ -6,6 +6,7 @@ import {researchVault,researchStep,createResearchState,CONCISE_INSTRUCTION,keywo
 import {sealCheckpoint,openCheckpoint,requestHash} from '../lib/checkpoint.js';
 import {proposeLayout} from '../lib/note-format.js';
 import {cleanContent,isUuid} from '../lib/notes.js';
+import {quickRoutes,workerAuthorized} from '../lib/quick-api.js';
 // Routing and gap-checking never touch the selected (possibly 5/min, 20/day) model.
 const PLANNER_MODEL='gemini-3.5-flash-lite';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -44,10 +45,18 @@ export default async function handler(req,res){
       setCookie(res,session.access_token,Math.min(session.expires_in??3600,3600));return send(200,{email:session.user.email});
     }
     if(req.method==='POST'&&route==='/api/logout'){setCookie(res,'',0);return send(200,{ok:true});}
+    if(req.method==='POST'&&route==='/api/quick-worker'){
+      if(!workerAuthorized(req.headers.authorization,process.env.QUICK_WORKER_SECRET))throw fail('Access denied.',403);
+      if(!process.env.ARIA_EMAIL||!process.env.ARIA_PASSWORD)throw fail('Quick Note worker credentials are not configured.',503);
+      const session=await sb('/auth/v1/token?grant_type=password',null,{email:process.env.ARIA_EMAIL,password:process.env.ARIA_PASSWORD});
+      if(session.user?.id!==process.env.OWNER_USER_ID)throw fail('Worker account does not own Aria.',403);
+      await quickRoutes({req,route,url:new URL(req.url,'http://localhost'),token:session.access_token,sb,fail,send,readBody,generate:gemini});return;
+    }
     const token=cookie(req);if(!token)throw fail('Sign in to continue.',401);
     const user=await sb('/auth/v1/user',token);
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
+    if(await quickRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send,readBody,generate:gemini}))return;
     if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
     if(req.method==='GET'&&route==='/api/notes-stamp'){
       const v=new URL(req.url,'http://localhost').searchParams.get('vault');

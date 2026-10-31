@@ -18,7 +18,7 @@ async function readJson(req) {
 // Called by api/index.js after the owner session has been verified. Returns true if handled.
 export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
   if (req.method === 'GET' && route === '/api/vaults') {
-    send(200, { vaults: await sb('/rest/v1/aria_vaults?select=id,name,description&order=created_at.asc,name.asc', token) });
+    send(200, { vaults: await sb('/rest/v1/aria_vaults?select=id,name,description,allow_auto_file,is_unsorted&order=created_at.asc,name.asc', token) });
     return true;
   }
   if (req.method === 'POST' && route === '/api/vault-create') {
