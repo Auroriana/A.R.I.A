@@ -1,7 +1,7 @@
 import {models,validateChat} from '../lib/models.js';
 import {noteRoutes} from '../lib/notes-api.js';
 import {gemini,embed} from '../lib/providers.js';
-import {researchVault} from '../lib/rag.js';
+import {researchVault,CONCISE_INSTRUCTION} from '../lib/rag.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
 async function sb(route,token,body,method=body?'POST':'GET') {
@@ -17,7 +17,9 @@ async function readBody(req){
 }
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');
-  const send=(status,data)=>{res.statusCode=status;res.end(JSON.stringify(data));};
+  let streaming=false,heartbeat;
+  const emit=(type,data)=>{if(!res.destroyed&&!res.writableEnded)res.write(JSON.stringify({type,...data})+'\n');};
+  const send=(status,data)=>{if(streaming){emit(data.error?'error':'result',data);res.end();}else{res.statusCode=status;res.end(JSON.stringify(data));}};
   try{
     const route=new URL(req.url,'http://localhost').pathname.replace(/\/$/,'');
     if(req.method==='GET'&&route==='/api/status')return send(200,{configured:!!configured(),geminiReady:!!process.env.GEMINI_API_KEY&&process.env.GEMINI_FREE_TIER_CONFIRMED==='true',models,embedding:{id:'gemini-embedding-2',enabled:process.env.ENABLE_SEMANTIC_SEARCH==='true',rpm:100,rpd:1000,tpm:30000},deepseekEnabled:false});
@@ -41,10 +43,16 @@ export default async function handler(req,res){
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
 	if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
     if(req.method!=='POST'||route!=='/api/chat')throw fail('Not found.',404);
-    const {model,message,mode,history,vault}=validateChat(await readBody(req));
+    const {model,message,mode,history,vault,concise}=validateChat(await readBody(req));
     if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled. Configure a Free-tier API key and confirm its billing tier.',503);
+    if(req.headers.accept?.includes('application/x-ndjson')){
+      streaming=true;res.setHeader('Content-Type','application/x-ndjson');res.setHeader('X-Accel-Buffering','no');res.flushHeaders?.();
+      heartbeat=setInterval(()=>emit('heartbeat',{}),10000);
+    }
+    const onProgress=event=>{if(streaming)emit('progress',event);};
     const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
     const generate=async request=>{
+      if(model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'low'}}};
       await reserve(model,Buffer.byteLength(JSON.stringify(request))+request.generationConfig.maxOutputTokens);
       return gemini(model,request);
     };
@@ -56,12 +64,14 @@ export default async function handler(req,res){
         return sb('/rest/v1/rpc/aria_search',token,{p_query:query,p_embedding:vector,p_vault:vault});
       };
       // Old assistant answers and deleted evidence never become fresh vault evidence.
-      return send(200,{...await researchVault({message,search,generate}),model});
+      return send(200,{...await researchVault({message,search,generate,concise,onProgress}),model});
     }
-    const system='You are Aria, a thoughtful personal research assistant. This is general chat; you have not searched the user’s vault. Be clear about uncertainty.';
+    const system='You are Aria, a thoughtful personal research assistant. This is general chat; you have not searched the user’s vault. Be clear about uncertainty.'+(concise?CONCISE_INSTRUCTION:'');
     const contents=[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message}]}];
     const request={systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:2048}};
+    onProgress({stage:'answering',message:'Preparing your answer.'});
     const result=await generate(request);
     send(200,{...result,model,sources:[]});
-  }catch(error){send(error.status??500,{error:error.status?error.message:'Request could not be completed. Check configuration or try again later.'});}
+  }catch(error){send(error.status??500,{error:error.status?error.message:['TimeoutError','AbortError'].includes(error.name)?'The upstream request timed out. Please try again.':error instanceof TypeError?'Could not connect to an upstream service. Check server connectivity and configuration.':'Request could not be completed. Check configuration or try again later.'});}
+  finally{clearInterval(heartbeat);}
 }

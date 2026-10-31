@@ -51,6 +51,16 @@ Source excerpts are returned with citations and safely rendered as text. Citatio
 
 ### Adaptive research and reasoning
 
+The composer includes a **Concise response** checkbox, remembered in this browser. It asks for a short answer in both general and vault modes while retaining required details and citations. It changes answer style, not research coverage or verification requirements.
+
+Chat uses a streamed response to show **Research activity** while work runs: each search query, returned note titles/paths, gap-checking stages, and answer preparation. This is an activity log, not private model reasoning. It remains available in a collapsed panel under the completed answer. Clients that do not request `application/x-ndjson` still receive a normal JSON response. Interrupted streams and streamed errors are surfaced in the chat; heartbeat frames keep active connections from sitting entirely idle.
+
+Assistant answers render headings, bold/emphasis, lists, code, blockquotes, simple tables, and HTTP(S) links. The renderer creates DOM elements without interpreting raw HTML. User messages and source excerpts remain literal text.
+
+Gemini 3.8 requests use `thinkingLevel: low`, an 8,192-token generation budget, and a 75-second provider timeout to leave room for reasoning and visible output; other models retain their existing settings. These controls follow the [Gemini 3.8 documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash/) and [thinking documentation](https://ai.google.dev/gemini-api/docs/thinking/). Quota reservations include the larger budget. The app distinguishes invalid API keys, model/access errors, provider quota errors, timeouts, and network failures without returning raw upstream error bodies. If Google reports `API_KEY_INVALID`, replace `GEMINI_API_KEY` in the environment actually serving the app and restart/redeploy. Changing local `.env.local` does not update Vercel's environment.
+
+Browser regression coverage for concise preference, live progress before completion, Markdown safety, and mobile width is available through `node tests/chat-browser.cjs` (uses the same locally installed Playwright/Chrome paths as the existing browser test).
+
 `lib/rag.js` contains the editable `VAULT_SYSTEM` (answer behavior), `RESEARCH_SYSTEM` (search behavior), and research limits. Edit these prompts to change how Aria reasons with retrieved notes; edit the original notes in the Notes editor to correct the procedures themselves. Updating a prompt does not fix contradictory source material.
 
 Vault mode first searches the operator's message, then asks the selected model which information is missing. Aria can request up to four focused keyword searches per round, for up to two rounds. She can follow a relevant procedure named in a retrieved passage, or search for another part of a multi-part request. An empty first search also reaches planning so she can try better terms. Follow-up searches use the same authenticated owner and selected vault as the initial request; the model cannot widen that scope. Only the initial search optionally uses an embedding.

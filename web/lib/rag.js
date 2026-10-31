@@ -11,6 +11,8 @@ export const RESEARCH_SYSTEM = `${VAULT_SYSTEM}
 Your task in this call is to choose additional searches, not answer the operator. Review the entire request, the search history, and current evidence for gaps. Follow named procedures referenced by relevant notes. Look for missing topics and prerequisites, not merely more copies of the first match. For an authenticated vehicle-addition case, consider vehicle/coverage requirements, third-party authority when relevant, ID-card delivery, payment history and autopay procedures; do not search only authentication.
 Return only a JSON object of this form: {"queries":["short focused search terms"]}. Return at most 4 distinct queries, each at most 200 characters. Use concise keywords, procedure names, or synonyms suitable for keyword search. Do not include personal identifiers, dates of birth, account numbers, or a request to search another vault. Return an empty array when the evidence is sufficient or no useful new search remains. Search results are not live account records. Do not repeat previous queries. Do not output private reasoning.`;
 
+export const CONCISE_INSTRUCTION = '\nKeep the answer concise: lead with the answer, use a short paragraph or a few bullets, and omit repetition and background. Still cover each requested task, necessary caveats, and citations. Aim for about 150 words unless essential details require more.';
+
 export const RAG_LIMITS = Object.freeze({rounds:2,queriesPerRound:4,sources:24,evidenceChars:60000});
 
 function queryKey(query) { return query.trim().replace(/\s+/g,' ').toLowerCase(); }
@@ -26,7 +28,7 @@ function parseQueries(answer,seen) {
   return queries;
 }
 
-export async function researchVault({message,search,generate}) {
+export async function researchVault({message,search,generate,concise=false,onProgress=()=>{}}) {
   const sources=[],sourceKeys=new Set(),seenQueries=new Set([queryKey(message)]);
   const searches=[],warnings=[]; let evidenceChars=0,planningCalls=0;
   function merge(rows) {
@@ -41,13 +43,16 @@ export async function researchVault({message,search,generate}) {
     }
   }
   async function retrieve(query,initial=false) {
+    onProgress({stage:'search',query});
     const rows=await search(query,{initial});
+    onProgress({stage:'results',query,notes:rows.map(s=>({title:s.title,path:s.source_path,vault:s.vault_name}))});
     return {query,rows};
   }
   const first=await retrieve(message,true);
   searches.push({query:message,matches:first.rows.length});merge(first.rows);
   const context=()=>JSON.stringify({operatorMessage:message,evidence:sources.map((s,i)=>({id:`S${i+1}`,title:s.title,path:s.source_path,vault:s.vault_name,content:s.content})),searches,warnings});
   for(let round=0;round<RAG_LIMITS.rounds;round++) {
+    onProgress({stage:'planning',round:round+1,message:'Checking which information is still missing.'});
     const plan=await generate({systemInstruction:{parts:[{text:RESEARCH_SYSTEM}]},contents:[{role:'user',parts:[{text:context()}]}],generationConfig:{maxOutputTokens:2048}});
     planningCalls++;
     let queries;
@@ -64,7 +69,8 @@ export async function researchVault({message,search,generate}) {
     // One further planning round can rephrase a no-hit search or follow a new reference.
     if(round===RAG_LIMITS.rounds-1&&added)warnings.push('Research budget reached; further referenced procedures may remain unchecked.');
   }
-  const result=await generate({systemInstruction:{parts:[{text:VAULT_SYSTEM+'\nResearch is complete for this response. Use the supplied evidence and search coverage; disclose material gaps and incomplete research. If no evidence was found, say so and limit your response to labeled general suggestions and clarifying questions.'}]},contents:[{role:'user',parts:[{text:context()}]}],generationConfig:{maxOutputTokens:4096}});
+  onProgress({stage:'answering',message:'Connecting the evidence and preparing your answer.'});
+  const result=await generate({systemInstruction:{parts:[{text:VAULT_SYSTEM+(concise?CONCISE_INSTRUCTION:'')+'\nResearch is complete for this response. Use the supplied evidence and search coverage; disclose material gaps and incomplete research. If no evidence was found, say so and limit your response to labeled general suggestions and clarifying questions.'}]},contents:[{role:'user',parts:[{text:context()}]}],generationConfig:{maxOutputTokens:4096}});
   const invalid=[...result.answer.matchAll(/\[S(\d+)\]/g)].some(m=>Number(m[1])<1||Number(m[1])>sources.length);
   if(invalid)throw Object.assign(new Error('The answer contained an invalid source reference. Please try a different question.'),{status:502});
   return {...result,sources:sources.map((s,i)=>({id:`S${i+1}`,title:s.title,path:s.source_path,vault:s.vault_name,excerpt:s.content})),research:{searches:searches.length,planningCalls,warnings}};

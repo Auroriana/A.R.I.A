@@ -14,7 +14,9 @@ export function validateChat(body) {
   if(!['general','vault'].includes(body.mode)) throw new Error('Choose general chat or vault search.');
   const vault=body.vault===undefined||body.vault==='all'?null:body.vault;
   if(vault!==null&&!isUuid(vault)) throw new Error('Choose a valid vault.');
+  if(body.concise!==undefined&&typeof body.concise!=='boolean')throw Object.assign(new Error('Concise must be a boolean.'),{status:400});
+  const concise=body.concise??false;
   const history=body.history??[];
   if(!Array.isArray(history)||history.length>8||history.some(m=>!['user','model'].includes(m.role)||typeof m.text!=='string'||m.text.length>6000)||JSON.stringify(history).length>18000) throw new Error('Conversation is too long. Start a new chat.');
-  return {model:model.id,message:body.message.trim(),mode:body.mode,history,vault};
+  return {model:model.id,message:body.message.trim(),mode:body.mode,history,vault,concise};
 }
