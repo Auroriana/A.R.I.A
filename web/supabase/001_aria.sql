@@ -34,9 +34,6 @@ begin
  if n>=rpm or total+p_tokens>tpm then return false;end if;
  select count(*) into n from public.aria_calls where owner_id=u and model=p_model and created_at>now()-interval '24 hours';
  if n>=rpd then return false;end if;
- if p_model<>'gemini-embedding-2' then
- select count(*) into n from public.aria_calls where owner_id=u and model<>'gemini-embedding-2' and created_at>now()-interval '24 hours';
- if n>=50 then return false;end if;end if;
  insert into public.aria_calls(owner_id,model,tokens) values(u,p_model,p_tokens);
  return true;
 end;$$;
