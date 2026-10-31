@@ -6,7 +6,7 @@ button,input,select,textarea{font:inherit;color:#fff;background:#000;border:1px 
 button{cursor:pointer;padding:6px 12px;transition:.2s}
 button:hover:not(:disabled){background:#fff;color:#000}
 button:disabled{opacity:.3;cursor:default}
-select{padding:5px;max-width:190px}
+select{height:30px;padding:0 5px;max-width:190px}
 [hidden]{display:none!important}
 :focus-visible{outline:1px solid #fff;outline-offset:2px}
 #app{display:grid;grid-template:"h h" 56px "m a" 1fr/1fr 280px;height:100%}
@@ -20,7 +20,7 @@ main{grid-area:m;display:flex;flex-direction:column;min-width:0;min-height:0}
 .view{flex:1;display:flex;flex-direction:column;min-height:0}
 .scroll{flex:1;overflow:auto;padding:28px}
 #msgs,#welcome{max-width:720px;margin:auto}
-#welcome{color:#777;margin-top:12vh;animation:up .8s both}
+#welcome{color:#777;margin-top:14vh;text-align:center;font-size:12px;letter-spacing:.25em;text-transform:uppercase;animation:up .8s both}
 .m{padding:18px 0;border-bottom:1px solid #222;overflow-wrap:anywhere;animation:up .4s both}
 .who{font-size:11px;letter-spacing:.3em;color:#777;margin-bottom:6px}
 .user .md{color:#999;white-space:pre-wrap}
@@ -42,7 +42,6 @@ summary::before{content:"+ ";}details[open]>summary::before{content:"− "}
 mark{background:#fff;color:#000;animation:flash .9s}
 aside{grid-area:a;border-left:1px solid #222;padding:20px;overflow:auto}
 aside h4{font-size:11px;letter-spacing:.3em;color:#777;font-weight:400;margin-bottom:16px}
-#empty{color:#444;font-size:12px}
 .n{position:relative;padding:0 0 14px 20px;color:#555;font-size:12px;overflow-wrap:anywhere;animation:in .5s both;transition:color .4s}
 .n::before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;border:1px solid #fff;border-radius:50%;transition:.4s}
 .n::after{content:"";position:absolute;left:3px;top:17px;bottom:0;width:1px;background:#333;transform-origin:top;animation:grow .5s both}
@@ -68,6 +67,20 @@ dialog button{width:100%;margin-top:8px}#le{color:#fff;font-size:12px}
 #nl button.on{color:#000;background:#fff}
 #ed{flex:1;resize:none;padding:16px;border:0;outline:0;line-height:1.7}
 .nb{display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid #222}.nb span{color:#777;font-size:12px;flex:1}
+.modes{display:flex;gap:4px}
+.mb{display:flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 10px;font-size:10px;line-height:1;letter-spacing:.15em;color:#777}
+.mb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5}
+.mb.ico{padding:0 8px}
+.mb.on{background:#fff;color:#000;border-color:#fff}
+.sw{position:relative;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.sw input{position:absolute;opacity:0;width:0;height:0}
+.sw i{width:30px;height:16px;border:1px solid #fff;position:relative;transition:.25s}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;background:#fff;transition:.25s}
+.sw input:checked+i{background:#fff}.sw input:checked+i::after{background:#000;transform:translateX(14px)}
+.sw input:focus-visible+i{outline:1px solid #fff;outline-offset:2px}
+.warn{border:1px solid #fff;padding:4px 8px;margin-top:6px;font-size:12px;animation:up .3s both}
+#send{border:0;height:30px;padding:0 8px;font-size:20px;line-height:1}
+#send:hover:not(:disabled){background:none;color:#fff;transform:translateY(-2px)}
 @keyframes up{from{opacity:0;transform:translateY(8px)}}
 @keyframes in{from{opacity:0;transform:translateX(10px)}}
 @keyframes grow{from{transform:scaleY(0)}}
@@ -75,24 +88,24 @@ dialog button{width:100%;margin-top:8px}#le{color:#fff;font-size:12px}
 @keyframes flash{from{background:#000;color:#fff}}
 @keyframes logo{from{opacity:0;letter-spacing:1.2em}}
 #pt{display:none}
-@media(max-width:860px){#app,#app.nm{grid-template:"h" 56px "m" 1fr/1fr}#pt{display:inline-block}
+@media(max-width:860px){#app,#app.nm{grid-template:"h" 56px "m" 1fr/1fr}#pt{display:flex}
 aside{position:fixed;top:56px;right:0;bottom:0;width:260px;background:#000;transform:translateX(100%);transition:.3s;z-index:5}#app.pt aside{transform:none}
 #nv-wrap{flex-direction:column}#nl{width:auto;max-height:30%;border:0}header{padding:0 14px}.logo{letter-spacing:.3em}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <div id="app">
-<header><span class="logo">A.R.I.A</span><nav><span id="who"></span><button id="pt" title="Vault path">Path</button><button id="tc" class="on">Chat</button><button id="tn">Notes</button><button id="out" hidden>Out</button></nav></header>
+<header><span class="logo">A.R.I.A</span><nav><span id="who"></span><button id="pt" class="mb" title="Vault path"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="18" r="2"/><path d="M6 8v4h4M12 14v4h4"/></svg>PATH</button><button id="tc" class="mb ico on" aria-label="Chat" title="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button><button id="tn" class="mb" title="Notes"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg>NOTES</button><button id="out" class="mb" title="Sign out" hidden><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/></svg>OUT</button></nav></header>
 <main>
-<section id="chat" class="view"><div id="setup" hidden></div><div class="scroll" id="scroll"><div id="welcome">Ask anything.<br>Choose “Search my notes” and watch the path on the right.</div><div id="msgs" aria-live="polite"></div></div>
-<footer><div id="err" role="alert" hidden></div><form id="f"><textarea id="q" rows="2" maxlength="4000" placeholder="Ask…" aria-label="Message"></textarea><div class="row"><div><select id="model" aria-label="Model"></select><select id="mode" aria-label="Source"><option value="general">General chat</option><option value="vault">Search my notes</option></select><select id="vault" aria-label="Vault" hidden></select><label><input type="checkbox" id="concise"> Concise</label></div><button id="send" aria-label="Send">↑</button></div></form><div id="hint"></div></footer></section>
+<section id="chat" class="view"><div id="setup" hidden></div><div class="scroll" id="scroll"><div id="welcome">Ataraxia Retrieval &amp; Intelligence Assistant</div><div id="msgs" aria-live="polite"></div></div>
+<footer><div id="err" role="alert" hidden></div><form id="f"><textarea id="q" rows="2" maxlength="4000" placeholder="Ask…" aria-label="Message"></textarea><div class="row"><div><select id="model" aria-label="Model"></select><div class="modes"><button type="button" id="mc" class="mb on" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>CHAT</button><button type="button" id="mv" class="mb" aria-label="Vault"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="1"/><circle cx="12" cy="11.5" r="3.5"/><path d="M12 11.5l2-2M6 19v2M18 19v2"/></svg>VAULT</button></div><input type="hidden" id="mode" value="general"><select id="vault" aria-label="Vault" hidden></select><label class="sw"><input type="checkbox" id="concise"><i></i>Concise</label></div><button id="send" aria-label="Send">↑</button></div></form><div id="hint"></div></footer></section>
 <section id="notes" class="view" hidden><div class="nb"><select id="nv" aria-label="Vault"></select><button id="nn">+ Note</button><span id="np">No note open</span><button id="sv" disabled>Save</button></div><div id="ns" class="ns" hidden></div><div id="nv-wrap"><nav id="nl" aria-label="Notes"></nav><textarea id="ed" spellcheck="false" disabled aria-label="Note editor"></textarea></div></section>
 </main>
-<aside><h4>PATH</h4><div id="trail"><div id="empty">Idle. Search my notes to trace a path.</div></div></aside>
+<aside><h4>PATH</h4><div id="trail"></div></aside>
 </div>
 <dialog id="login"><form id="lf"><div class="logo" style="margin-bottom:18px">A.R.I.A</div><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="pw" type="password" autocomplete="current-password" required></label><p id="le" role="alert"></p><button id="lb">Enter</button><button type="button" id="skip">Close</button></form></dialog>
 <script type="module">
 const $=id=>document.getElementById(id),el=(t,x)=>{const n=document.createElement(t);if(x!==undefined)n.textContent=x;return n};
-let history=[],signedIn=false,busy=false,cfg,cur=null;
+let history=[],signedIn=false,busy=false,cfg,cur=null,depth=1,first=true;
 async function api(p,b){const r=await fetch('/api/'+p,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw new Error(d.error||'Request failed.');return d}
 async function chat(body,on){
  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body)});
@@ -135,32 +148,36 @@ function hl(p,claim){const cw=new Set(words(claim)),segs=p.dataset.t.match(/[^.!
  p.replaceChildren();let first=null,k=0;segs.forEach((s,i)=>{if(best>0&&sc[i]>=Math.max(1,best*.6)&&k<3){const m=el('mark',s);p.append(m);first??=m;k++}else p.append(s)});return first}
 $('msgs').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const it=b.closest('.m'),src=it.querySelector('.src[data-s="'+b.dataset.s+'"]');if(!src)return;
  it.querySelector('.refs').open=true;it.querySelectorAll('.src').forEach(x=>x.open=x===src);it.querySelectorAll('.c').forEach(x=>x.classList.toggle('on',x===b));
- const mk=hl(src.querySelector('.ex'),b.dataset.claim);lit(src.dataset.path);(mk||src).scrollIntoView({block:'center',behavior:'smooth'})};
+ const mk=hl(src.querySelector('.ex'),b.dataset.claim);src.querySelector('.warn')?.remove();
+ const lg=s=>new Set((s.match(/\b(and|or)\b/gi)||[]).map(x=>x.toLowerCase())),c=lg(b.dataset.claim),g=lg([...src.querySelectorAll('mark')].map(m=>m.textContent).join(' '));
+ if(c.size&&g.size&&![...c].some(x=>g.has(x))){const w=el('div','Check: the answer says “'+[...c].join('/')+'” but this passage says “'+[...g].join('/')+'”.');w.className='warn';src.querySelector('small').after(w)}
+ lit(src.dataset.path);(mk||src).scrollIntoView({block:'center',behavior:'smooth'})};
 // ---- vault path sidebar
 const trail=$('trail'),nodes=new Map();
-function node(cls,label,key){$('empty')?.remove();const d=el('div',label);d.className='n '+cls;if(key)nodes.set(key,d);trail.append(d);d.scrollIntoView({block:'nearest',behavior:'smooth'});return d}
+function node(cls,label,key,depth=0){const d=el('div',label);d.className='n '+cls;d.style.marginLeft=depth*14+'px';if(key)nodes.set(key,d);trail.append(d);d.scrollIntoView({block:'nearest',behavior:'smooth'});return d}
 const cool=()=>trail.querySelectorAll('.hot').forEach(n=>n.classList.remove('hot'));
 function lit(path){nodes.forEach(n=>n.classList.remove('lit','hot'));const n=nodes.get(path);if(n){n.classList.add('lit');n.scrollIntoView({block:'nearest',behavior:'smooth'})}}
 function onProgress(it,ev){
- if(ev.stage==='search'){cool();node('q hot','⌕ '+(ev.query.length>90?ev.query.slice(0,90)+'…':ev.query))}
- else if(ev.stage==='results'){for(const n of ev.notes){const old=nodes.get(n.path);if(old){old.classList.remove('hot');void old.offsetWidth;old.classList.add('hot')}else node('hot',(n.vault?n.vault+' / ':'')+n.path,n.path)}}
- else if(ev.stage==='planning'||ev.stage==='answering'){it.querySelector('.md').textContent=ev.message;if(ev.stage==='answering'){cool();node('q hot','compose answer')}}
+ if(ev.stage==='search'){cool();node('q hot','⌕ '+(first?'your question':ev.query.length>90?ev.query.slice(0,90)+'…':ev.query),null,depth);first=false}
+ else if(ev.stage==='results'){for(const n of ev.notes){const old=nodes.get(n.path);if(old){old.classList.remove('hot');void old.offsetWidth;old.classList.add('hot')}else node('hot',(n.vault?n.vault+' / ':'')+n.path,n.path,Math.min(depth+1,4))}}
+ else if(ev.stage==='planning'||ev.stage==='answering'){it.querySelector('.md').textContent=ev.message;if(ev.stage==='planning')depth=ev.round+1;if(ev.stage==='answering'){cool();node('q hot','compose answer')}}
  else if(ev.stage==='thought-summary'){let t=it.querySelector('.th');if(!t){t=el('details');t.className='th';t.append(el('summary','Thinking'),el('div'));it.querySelector('.who').after(t)}t.lastChild.append(ev.text)}}
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
-function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();trail.replaceChildren(Object.assign(el('div','Idle. Search my notes to trace a path.'),{id:'empty'}))}
+function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();trail.replaceChildren()}
 function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('hint').textContent=m?m.rpm+'/min · '+m.rpd+'/day · notes use 2–3 calls · check answers against sources':''}
 function acct(email){signedIn=true;$('who').textContent=email;$('out').hidden=false;if($('login').open)$('login').close();loadVaults()}
 async function loadVaults(){try{const{vaults}=await api('vaults');const v=$('vault'),n=$('nv');v.replaceChildren(new Option('All vaults','all'));n.replaceChildren();for(const x of vaults){v.append(new Option(x.name,x.id));n.append(new Option(x.name,x.id))}}catch{}}
-$('model').onchange=upd;$('mode').onchange=()=>{reset();$('vault').hidden=$('mode').value!=='vault'};
+$('model').onchange=upd;function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');reset();$('vault').hidden=v!=='vault'}
+$('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode('vault');
 $('pt').onclick=()=>$('app').classList.toggle('pt');
 $('skip').onclick=()=>$('login').close();
 $('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{acct((await api('login',{email:$('email').value,password:$('pw').value})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
 $('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();$('who').textContent='';$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('login').showModal();return}
- const t=$('q').value.trim();if(!t)return;err('');busy=true;for(const i of ['send','mode','model','concise'])$(i).disabled=true;
- const vault=$('mode').value==='vault';msg('user',t);$('q').value='';nodes.clear();trail.replaceChildren();
+ const t=$('q').value.trim();if(!t)return;err('');busy=true;for(const i of ['send','mc','mv','model','concise'])$(i).disabled=true;
+ const vault=$('mode').value==='vault';msg('user',t);$('q').value='';nodes.clear();trail.replaceChildren();depth=1;first=true;
  if(vault)node('q hot','A.R.I.A › '+($('vault').selectedOptions[0]?.text||'vault'));
  const it=msg('model',vault?'Researching your notes…':'Thinking…');
  try{const d=await chat({message:t,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history:history.slice(-6),concise:$('concise').checked},ev=>onProgress(it,ev));
@@ -168,7 +185,7 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
   refs(it,d.sources||[]);cool();
   history.push({role:'user',text:t},{role:'model',text:d.answer.slice(0,6000)});while(JSON.stringify(history.slice(-6)).length>16000)history.splice(0,2);history=history.slice(-6)}
  catch(x){it.querySelector('.md').textContent='Request stopped: '+x.message;err(x.message);$('q').value=t;cool()}
- finally{busy=false;for(const i of ['send','mode','model','concise'])$(i).disabled=false;$('q').focus()}};
+ finally{busy=false;for(const i of ['send','mc','mv','model','concise'])$(i).disabled=false;$('q').focus()}};
 // ---- tabs and notes
 function tab(n){$('chat').hidden=n;$('notes').hidden=!n;$('app').classList.toggle('nm',n);$('tc').classList.toggle('on',!n);$('tn').classList.toggle('on',n);if(n&&signedIn)nList()}
 $('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);
