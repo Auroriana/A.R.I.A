@@ -20,9 +20,13 @@ main{grid-area:m;display:flex;flex-direction:column;min-width:0;min-height:0}
 .view{flex:1;display:flex;flex-direction:column;min-height:0}
 .scroll{flex:1;overflow:auto;padding:28px}
 #msgs,#welcome{max-width:720px;margin:auto}
-#welcome{color:#777;margin-top:14vh;text-align:center;font-size:12px;letter-spacing:.25em;text-transform:uppercase;animation:up .8s both}
+#welcome{margin-top:18vh;text-align:center}
+#welcome .who{padding-left:.3em}
+#welcome .who{animation:up .8s both}
+#gr{animation:up 1s .35s both}
+.tag{text-align:center;padding-left:.3em;color:#555;font-size:10px;letter-spacing:.3em;text-transform:uppercase;margin-top:12px}
 .m{padding:18px 0;border-bottom:1px solid #222;overflow-wrap:anywhere;animation:up .4s both}
-.who{font-size:11px;letter-spacing:.3em;color:#777;margin-bottom:6px}
+.who{text-transform:uppercase;font-size:11px;letter-spacing:.3em;color:#777;margin-bottom:6px}
 .user .md{color:#999;white-space:pre-wrap}
 .md p,.md ul,.md ol,.md pre,.md blockquote,.md .tw,.md h3{margin:.6em 0}
 .md ul,.md ol{padding-left:1.6em}
@@ -41,7 +45,7 @@ summary::before{content:"+ ";}details[open]>summary::before{content:"− "}
 .src small{display:block;color:#777}.ex{white-space:pre-wrap;margin-top:6px;color:#999}
 mark{background:#fff;color:#000;animation:flash .9s}
 aside{grid-area:a;border-left:1px solid #222;padding:20px;overflow:auto}
-aside h4{font-size:11px;letter-spacing:.3em;color:#777;font-weight:400;margin-bottom:16px}
+aside h4{text-align:center;padding-left:.3em;font-size:11px;letter-spacing:.3em;color:#777;font-weight:400;margin-bottom:16px}
 .n{position:relative;padding:0 0 14px 20px;color:#555;font-size:12px;overflow-wrap:anywhere;animation:in .5s both;transition:color .4s}
 .n::before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;border:1px solid #fff;border-radius:50%;transition:.4s}
 .n::after{content:"";position:absolute;left:3px;top:17px;bottom:0;width:1px;background:#333;transform-origin:top;animation:grow .5s both}
@@ -79,8 +83,19 @@ dialog button{width:100%;margin-top:8px}#le{color:#fff;font-size:12px}
 .sw input:checked+i{background:#fff}.sw input:checked+i::after{background:#000;transform:translateX(14px)}
 .sw input:focus-visible+i{outline:1px solid #fff;outline-offset:2px}
 .warn{border:1px solid #fff;padding:4px 8px;margin-top:6px;font-size:12px;animation:up .3s both}
-#send{border:0;height:30px;padding:0 8px;font-size:20px;line-height:1}
-#send:hover:not(:disabled){background:none;color:#fff;transform:translateY(-2px)}
+#send,#add{border:0;height:30px;padding:0 8px;font-size:20px;line-height:1}
+#send:hover:not(:disabled),#add:hover:not(:disabled){background:none;color:#fff;transform:translateY(-2px)}
+#att{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}#att:empty{display:none}
+.at{display:flex;align-items:center;gap:6px;border:1px solid #333;padding:2px 4px 2px 6px;font-size:11px;color:#999;max-width:210px;animation:up .25s both}
+.at img{width:22px;height:22px;object-fit:cover}.at>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.at button{border:0;padding:0 4px;color:#777}
+.pick{position:relative}
+#pm{position:absolute;bottom:36px;left:0;width:250px;flex-direction:column;flex-wrap:nowrap;gap:0;align-items:stretch;background:#000;border:1px solid #fff;z-index:6;animation:up .2s both}
+.pg svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.5}
+.pg{display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:10px;letter-spacing:.2em;color:#777}.pg.off{border-top:1px solid #222;color:#444}
+.po{display:block;width:100%;text-align:left;border:0;padding:6px 12px 6px 24px}.po small{display:block;color:#777;font-size:11px}
+.po.on{background:#fff;color:#000}.po.on small{color:#555}
+.ab{display:flex;gap:8px}
 @keyframes up{from{opacity:0;transform:translateY(8px)}}
 @keyframes in{from{opacity:0;transform:translateX(10px)}}
 @keyframes grow{from{transform:scaleY(0)}}
@@ -96,13 +111,14 @@ aside{position:fixed;top:56px;right:0;bottom:0;width:260px;background:#000;trans
 <div id="app">
 <header><span class="logo">A.R.I.A</span><nav><span id="who"></span><button id="pt" class="mb" title="Vault path"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="18" r="2"/><path d="M6 8v4h4M12 14v4h4"/></svg>PATH</button><button id="tc" class="mb ico on" aria-label="Chat" title="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button><button id="tn" class="mb" title="Notes"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg>NOTES</button><button id="out" class="mb" title="Sign out" hidden><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/></svg>OUT</button></nav></header>
 <main>
-<section id="chat" class="view"><div id="setup" hidden></div><div class="scroll" id="scroll"><div id="welcome">Ataraxia Retrieval &amp; Intelligence Assistant</div><div id="msgs" aria-live="polite"></div></div>
-<footer><div id="err" role="alert" hidden></div><form id="f"><textarea id="q" rows="2" maxlength="4000" placeholder="Ask…" aria-label="Message"></textarea><div class="row"><div><select id="model" aria-label="Model"></select><div class="modes"><button type="button" id="mc" class="mb on" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>CHAT</button><button type="button" id="mv" class="mb" aria-label="Vault"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="1"/><circle cx="12" cy="11.5" r="3.5"/><path d="M12 11.5l2-2M6 19v2M18 19v2"/></svg>VAULT</button></div><input type="hidden" id="mode" value="general"><select id="vault" aria-label="Vault" hidden></select><label class="sw"><input type="checkbox" id="concise"><i></i>Concise</label></div><button id="send" aria-label="Send">↑</button></div></form><div id="hint"></div></footer></section>
+<section id="chat" class="view"><div id="setup" hidden></div><div class="scroll" id="scroll"><div id="welcome"><div class="who">ARIA</div><div id="gr" class="who"></div></div><div id="msgs" aria-live="polite"></div></div>
+<footer><div id="err" role="alert" hidden></div><form id="f"><div id="att"></div><input type="file" id="file" accept="image/*,application/pdf" multiple hidden><textarea id="q" rows="2" maxlength="4000" placeholder="???" aria-label="Message"></textarea><div class="row"><div><div class="pick"><button type="button" id="mp" class="mb ico" aria-haspopup="true" aria-label="Model"><svg viewBox="0 0 24 24"><path d="M12 2c.5 5.5 4.5 9.5 10 10-5.5.5-9.5 4.5-10 10-.5-5.5-4.5-9.5-10-10 5.5-.5 9.5-4.5 10-10z"/></svg></button><div id="pm" hidden></div></div><input type="hidden" id="model"><div class="modes"><button type="button" id="mc" class="mb on" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>CHAT</button><button type="button" id="mv" class="mb" aria-label="Vault"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="15" rx="1"/><circle cx="12" cy="11.5" r="3.5"/><path d="M12 11.5l2-2M6 19v2M18 19v2"/></svg>VAULT</button></div><input type="hidden" id="mode" value="general"><select id="vault" aria-label="Vault" hidden></select><label class="sw"><input type="checkbox" id="concise"><i></i>Concise</label></div><div><button type="button" id="add" aria-label="Attach files" title="Attach files or paste an image">+</button><button id="send" aria-label="Send">↑</button></div></div></form><div class="tag">Ataraxia Retrieval &amp; Intelligence Assistant</div><div id="hint"></div></footer></section>
 <section id="notes" class="view" hidden><div class="nb"><select id="nv" aria-label="Vault"></select><button id="nn">+ Note</button><span id="np">No note open</span><button id="sv" disabled>Save</button></div><div id="ns" class="ns" hidden></div><div id="nv-wrap"><nav id="nl" aria-label="Notes"></nav><textarea id="ed" spellcheck="false" disabled aria-label="Note editor"></textarea></div></section>
 </main>
 <aside><h4>PATH</h4><div id="trail"></div></aside>
 </div>
 <dialog id="login"><form id="lf"><div class="logo" style="margin-bottom:18px">A.R.I.A</div><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="pw" type="password" autocomplete="current-password" required></label><p id="le" role="alert"></p><button id="lb">Enter</button><button type="button" id="skip">Close</button></form></dialog>
+<dialog id="ask"><form id="af"><label id="al"></label><input id="av" autocomplete="off"><div class="ab"><button type="button" id="ac">Cancel</button><button id="ao">OK</button></div></form></dialog>
 <script type="module">
 const $=id=>document.getElementById(id),el=(t,x)=>{const n=document.createElement(t);if(x!==undefined)n.textContent=x;return n};
 let history=[],signedIn=false,busy=false,cfg,cur=null,depth=1,first=true;
@@ -165,27 +181,51 @@ function onProgress(it,ev){
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
 function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();trail.replaceChildren()}
-function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('hint').textContent=m?m.rpm+'/min · '+m.rpd+'/day · notes use 2–3 calls · check answers against sources':''}
+const GEM='<svg viewBox="0 0 24 24"><path d="M12 2c.5 5.5 4.5 9.5 10 10-5.5.5-9.5 4.5-10 10-.5-5.5-4.5-9.5-10-10 5.5-.5 9.5-4.5 10-10z"/></svg>',DS='<svg viewBox="0 0 24 24"><path d="M2 14c0-4 4-8 10-8 4 0 7 2 8 5l2-2-.5 6c-1 3-5 5-10 5-5 0-9.5-2-9.5-6z"/><circle cx="9" cy="12" r=".8"/></svg>';
+function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.className='pg';g.innerHTML=GEM+'GEMINI';p.append(g);
+ for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
+ const d=el('div');d.className='pg off';d.innerHTML=DS+'DEEPSEEK · OFF';p.append(d)}
+function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('mp').title=m?.name||'';$('hint').textContent=m?m.rpm+'/min · '+m.rpd+'/day · notes use 2–3 calls · check answers against sources':''}
 function acct(email){signedIn=true;$('who').textContent=email;$('out').hidden=false;if($('login').open)$('login').close();loadVaults()}
 async function loadVaults(){try{const{vaults}=await api('vaults');const v=$('vault'),n=$('nv');v.replaceChildren(new Option('All vaults','all'));n.replaceChildren();for(const x of vaults){v.append(new Option(x.name,x.id));n.append(new Option(x.name,x.id))}}catch{}}
-$('model').onchange=upd;function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');reset();$('vault').hidden=v!=='vault'}
+function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');reset();$('vault').hidden=v!=='vault'}
 $('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode('vault');
+$('mp').onclick=()=>{if(cfg)$('pm').hidden=!$('pm').hidden};
+$('pm').onclick=e=>{const b=e.target.closest('.po');if(!b)return;$('model').value=b.dataset.id;buildModels();upd();$('pm').hidden=true};
+document.addEventListener('click',e=>{if(!e.target.closest('.pick'))$('pm').hidden=true});
 $('pt').onclick=()=>$('app').classList.toggle('pt');
 $('skip').onclick=()=>$('login').close();
 $('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{acct((await api('login',{email:$('email').value,password:$('pw').value})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
 $('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();$('who').textContent='';$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('login').showModal();return}
- const t=$('q').value.trim();if(!t)return;err('');busy=true;for(const i of ['send','mc','mv','model','concise'])$(i).disabled=true;
- const vault=$('mode').value==='vault';msg('user',t);$('q').value='';nodes.clear();trail.replaceChildren();depth=1;first=true;
+ const t=$('q').value.trim()||(files.length?'What does this show?':'');if(!t)return;err('');busy=true;for(const i of ['send','add','mc','mv','mp','concise'])$(i).disabled=true;
+ const vault=$('mode').value==='vault';msg('user',t+(files.length?'\n'+files.map(f=>'[attached: '+f.name+']').join(' '):''));const sent=files;files=[];renderAtt();$('q').value='';nodes.clear();trail.replaceChildren();depth=1;first=true;
  if(vault)node('q hot','A.R.I.A › '+($('vault').selectedOptions[0]?.text||'vault'));
  const it=msg('model',vault?'Researching your notes…':'Thinking…');
- try{const d=await chat({message:t,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history:history.slice(-6),concise:$('concise').checked},ev=>onProgress(it,ev));
+ try{const d=await chat({message:t,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history:history.slice(-6),concise:$('concise').checked,files:sent.map(({mime,data})=>({mime,data}))},ev=>onProgress(it,ev));
   const r=d.research;md(it.querySelector('.md'),d.answer+(d.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):''));
   refs(it,d.sources||[]);cool();
   history.push({role:'user',text:t},{role:'model',text:d.answer.slice(0,6000)});while(JSON.stringify(history.slice(-6)).length>16000)history.splice(0,2);history=history.slice(-6)}
- catch(x){it.querySelector('.md').textContent='Request stopped: '+x.message;err(x.message);$('q').value=t;cool()}
- finally{busy=false;for(const i of ['send','mc','mv','model','concise'])$(i).disabled=false;$('q').focus()}};
+ catch(x){it.querySelector('.md').textContent='Request stopped: '+x.message;err(x.message);$('q').value=t;files=sent;renderAtt();cool()}
+ finally{busy=false;for(const i of ['send','add','mc','mv','mp','concise'])$(i).disabled=false;$('q').focus()}};
+// ---- attachments (images are shrunk to JPEG <=1600px; PDFs sent as-is; ~2.8 MB total)
+let files=[];
+const b64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=no;r.readAsDataURL(blob)});
+async function shrink(f){const bmp=await createImageBitmap(f),k=Math.min(1,1600/Math.max(bmp.width,bmp.height)),c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(bmp,0,0,c.width,c.height);return new Promise(ok=>c.toBlob(ok,'image/jpeg',.85))}
+function renderAtt(){const a=$('att');a.replaceChildren();files.forEach((f,i)=>{const d=el('span');d.className='at';if(f.mime!=='application/pdf'){const im=el('img');im.src='data:'+f.mime+';base64,'+f.data;im.alt='';d.append(im)}d.append(el('span',f.name));const x=el('button','×');x.type='button';x.setAttribute('aria-label','Remove');x.onclick=()=>{files.splice(i,1);renderAtt()};d.append(x);a.append(d)})}
+async function addFiles(list){for(const f of list){if(files.length>=4){err('Up to 4 attachments.');break}
+ try{let mime=f.type,blob=f;if(mime.startsWith('image/')){blob=await shrink(f);mime='image/jpeg'}else if(mime!=='application/pdf'){err('Only images and PDFs are supported.');continue}
+  const data=await b64(blob);if(files.reduce((n,x)=>n+x.data.length,0)+data.length>3.9e6){err('Attachments are too large (about 2.8 MB total).');continue}
+  files.push({mime,data,name:f.name||'screenshot'});err('')}catch{err('Could not read '+(f.name||'that file')+'.')}}
+ renderAtt()}
+$('add').onclick=()=>$('file').click();
+$('file').onchange=async e=>{await addFiles([...e.target.files]);e.target.value=''};
+document.addEventListener('paste',e=>{if($('chat').hidden||$('login').open)return;const fs=[...(e.clipboardData?.files||[])].filter(f=>f.type.startsWith('image/')||f.type==='application/pdf');if(fs.length){e.preventDefault();addFiles(fs)}});
+$('f').addEventListener('dragover',e=>e.preventDefault());
+$('f').addEventListener('drop',e=>{if(e.dataTransfer.files.length){e.preventDefault();addFiles([...e.dataTransfer.files])}});
+// in-page replacement for prompt(): resolves to the text, or null if cancelled
+function ask(label,val=''){return new Promise(ok=>{const d=$('ask');let v=null;$('al').textContent=label;$('av').value=val;d.onclose=()=>ok(v);$('af').onsubmit=e=>{e.preventDefault();v=$('av').value.trim()||null;d.close()};$('ac').onclick=()=>d.close();d.showModal();$('av').select()})}
 // ---- tabs and notes
 function tab(n){$('chat').hidden=n;$('notes').hidden=!n;$('app').classList.toggle('nm',n);$('tc').classList.toggle('on',!n);$('tn').classList.toggle('on',n);if(n&&signedIn)nList()}
 $('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);
@@ -194,9 +234,10 @@ async function nList(){const v=$('nv').value;if(!v)return;try{const{notes}=await
 async function nOpen(path){try{const n=await api('note-read',{vault:$('nv').value,path});cur={path:n.path,version:n.version};$('ed').value=n.content;$('ed').disabled=false;$('sv').disabled=false;$('np').textContent=n.path+' · v'+n.version;ns('');nList()}catch(x){ns(x.message)}}
 $('nv').onchange=()=>{cur=null;$('ed').value='';$('ed').disabled=true;$('sv').disabled=true;$('np').textContent='No note open';nList()};
 $('sv').onclick=async()=>{if(!cur)return;try{const r=await api('note',{vault:$('nv').value,path:cur.path,content:$('ed').value,baseVersion:cur.version});cur.version=r.version;$('np').textContent=cur.path+' · saved v'+r.version;ns('')}catch(x){ns(x.message)}};
-$('nn').onclick=async()=>{const p=prompt('Path (folder/Name.md):','00 Inbox/Untitled.md');if(!p)return;try{await api('note',{vault:$('nv').value,path:p,content:'---\nai_enabled: false\n---\n\n# '+p.split('/').pop().replace(/\.md$/i,'')+'\n',baseVersion:0});await nOpen(p)}catch(x){ns(x.message)}};
+$('nn').onclick=async()=>{const p=await ask('Path (folder/Name.md)','00 Inbox/Untitled.md');if(!p)return;try{await api('note',{vault:$('nv').value,path:p,content:'---\nai_enabled: false\n---\n\n# '+p.split('/').pop().replace(/\.md$/i,'')+'\n',baseVersion:0});await nOpen(p)}catch(x){ns(x.message)}};
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&!$('notes').hidden){e.preventDefault();$('sv').click()}});
-try{cfg=await api('status');for(const m of cfg.models)$('model').append(new Option(m.name,m.id));upd();
+const h=new Date().getHours();$('gr').textContent=h>=5&&h<12?'Good morning.':h>=12&&h<18?'Good afternoon.':'Good evening.';
+try{cfg=await api('status');$('model').value=cfg.models[0].id;buildModels();upd();
  if(!cfg.configured||!cfg.geminiReady){$('setup').hidden=false;$('setup').textContent='Preview mode: finish Supabase and Gemini setup to enable answers.'}
  if(cfg.configured)try{acct((await api('session')).email)}catch{}}catch{err('Could not reach the app server.')}
 </script></body></html>
