@@ -110,3 +110,11 @@ export function rebaseLayout(previous, next) {
   const blocks=layout.blocks.filter(b=>!(b.line>first&&b.line<=last)).map(b=>({...b,line:b.line>last?b.line+lineDelta:b.line,...(b.endLine?{endLine:Math.min(total,b.endLine>=last?b.endLine+lineDelta:b.endLine)}:{})})).filter(b=>b.line<=total&&(!b.endLine||b.endLine>b.line));
   try{return withLayout(next,{spans,blocks});}catch{return next;}
 }
+
+export function aiDefault(content, path) {
+  const fm = content.match(/^---\n([\s\S]*?)\n---(?:\n|$)/)?.[1] ?? '';
+  const flag = fm.match(/(?:^|\n)ai_enabled:[ \t]*([^\n]*?)[ \t]*(?:\n|$)/)?.[1];
+  if (/^40 questions\//i.test(path)) return false;
+  if (/^99 archive\//i.test(path)) return flag === 'true';
+  return flag === undefined || flag === 'true';
+}

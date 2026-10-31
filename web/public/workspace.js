@@ -1,5 +1,5 @@
 import { renderMarkdown } from './note-renderer.js';
-import { noteName, parentPath, buildTree, extractLinks, resolveLink, aliasesOf, splitNote, setProperty, withLayout, rebaseLayout, readLayout } from './note-model.js';
+import { noteName, parentPath, buildTree, extractLinks, resolveLink, aliasesOf, splitNote, setProperty, withLayout, rebaseLayout, readLayout, aiDefault } from './note-model.js';
 import { captureRichPaste } from './rich-paste.js';
 
 const icons = {file:'<path d="M5 3h9l5 5v13H5zM14 3v6h5M8 13h8M8 17h6"/>',folder:'<path d="M3 6h7l2 2h9v12H3zM15 11v6M12 14h6"/>',collapse:'<path d="m7 3 5 5 5-5M7 21l5-5 5 5M4 12h16"/>',search:'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',sidebar:'<rect x="3" y="4" width="18" height="16"/><path d="M9 4v16"/>'};
@@ -119,7 +119,7 @@ export function mountWorkspace(root, { api, ask, confirm: confirmBox = async m =
   function preview(){if(!active)return;renderMarkdown($('note-rendered'),active.content,{path:active.path,notes,onLink:follow});renderReferences();}
   function activate(t){
     active=t;folder=t?parentPath(t.path):folder;$('ed').value=t?.content??'';$('note-empty').hidden=!!t;$('note-properties').hidden=!t;
-    $('np').replaceChildren();if(t){$('np').append(el('span',parentPath(t.path).replaceAll('/',' / ')+(parentPath(t.path)?' / ':'')),el('strong',noteName(t.path)));const p=splitNote(t.content).properties;$('note-ai').checked=/^ai_enabled:\s*true\s*$/m.test(p);$('note-aliases').value=aliasesOf(t.content).join(', ');preview();}
+    $('np').replaceChildren();if(t){$('np').append(el('span',parentPath(t.path).replaceAll('/',' / ')+(parentPath(t.path)?' / ':'')),el('strong',noteName(t.path)));$('note-ai').checked=aiDefault(t.content,t.path);$('note-aliases').value=aliasesOf(t.content).join(', ');preview();}
     else{$('np').textContent='No note open';$('note-refs').hidden=true;}
     setMode(mode);renderTree();update();status('');$('note-reload').hidden=!t?.conflict;
   }
@@ -144,7 +144,7 @@ export function mountWorkspace(root, { api, ask, confirm: confirmBox = async m =
   }
   async function createNote(path){
     path=/\.md$/i.test(path)?path:path+'.md';
-    try{await api('note',{vault,path,content:'---\nai_enabled: false\n---\n\n# '+noteName(path)+'\n',baseVersion:0});await loadList();await openNote(path,{newTab:true});setMode('split');$('ed').focus();}catch(e){status(e.message);}
+    try{await api('note',{vault,path,content:'---\nai_enabled: true\n---\n\n# '+noteName(path)+'\n',baseVersion:0});await loadList();await openNote(path,{newTab:true});setMode('split');$('ed').focus();}catch(e){status(e.message);}
   }
   async function save(){
     if(!active||!dirty(active)||saving)return;const t=active,id=vault,content=t.content;saving=true;update();
