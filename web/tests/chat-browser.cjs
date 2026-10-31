@@ -26,12 +26,11 @@ const http=require('node:http');const fs=require('node:fs/promises');const path=
     await page.locator('#concise').check();await page.reload();assert.equal(await page.locator('#concise').isChecked(),true);
     await page.locator('#mode').selectOption('vault');await page.locator('#question').fill('Authenticated - add a car');await page.locator('#send').click();
     await page.getByText('Adding vehicles — Insurance / vehicles.md').waitFor();assert.equal(await page.locator('#send').isDisabled(),true);assert.equal(submitted.concise,true);
-    await page.locator('.thought-text').waitFor();assert.match(await page.locator('.thought-text').innerText(),/vehicle requirements/);assert.equal(await page.locator('.thought-text script').count(),0);
+    await page.locator('.thought').waitFor();assert.match(await page.locator('.thought').innerText(),/vehicle requirements/);assert.equal(await page.locator('.thought script').count(),0);
     finish();await page.locator('.markdown h3').waitFor();assert.equal(await page.locator('.markdown strong').innerText(),'Authenticated');
     assert.equal(await page.locator('.markdown ul ul li').innerText(),'Confirm VIN');assert.equal(await page.locator('.markdown table').count(),1);assert.equal(await page.locator('.markdown pre code').count(),1);
     assert.equal(await page.locator('.markdown img,.markdown script').count(),0);assert.equal(await page.locator('.markdown a').count(),1);assert.equal(await page.evaluate(()=>window.pwned),undefined);
-    assert.equal(await page.locator('.research-activity:not(.thought-summaries)').evaluate(e=>e.open),false);
-    assert.equal(await page.locator('.thought-summaries').evaluate(e=>e.open),false);assert.match(await page.locator('.thought-status').textContent(),/complete/);
+    assert.equal(await page.locator('.thinking').evaluate(e=>e.open),false);assert.match(await page.locator('.thinking summary').innerText(),/Thought for/);
     await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
     console.log('Live progress before completion, concise preference, Markdown, injection safety and mobile width passed.');
   }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

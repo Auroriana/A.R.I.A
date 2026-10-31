@@ -55,7 +55,7 @@ export default async function handler(req,res){
     const onProgress=event=>{if(streaming)emit('progress',event);};
     const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
     const generate=async (request,{phase='answer',round}={})=>{
-      if(model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'low'}}};
+      if(model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:phase==='planning'?'medium':'low'}}};
       await reserve(model,Buffer.byteLength(JSON.stringify(request))+request.generationConfig.maxOutputTokens);
       if(!streaming)return gemini(model,request);
       if(generationController.signal.aborted)throw fail('The overall response time limit was reached or the chat connection closed.',504);

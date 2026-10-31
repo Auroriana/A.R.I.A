@@ -1,0 +1,100 @@
+/* Aria dark forest theme. Load AFTER style.css / notes.css / import.css. Delete this file to revert. */
+:root{color-scheme:dark;--bg:#070a08;--panel:#0b110d;--raised:#101812;--line:#1b2a20;--line-soft:#131e17;--text:#dbe6de;--muted:#82978a;--faint:#56695d;--accent:#4fb477;--accent-hi:#8de6ae;--accent-deep:#16382a;--on-accent:#06100a;--danger:#e8907c;--warn:#cdb77a;color:var(--text);background:var(--bg)}
+::selection{background:var(--accent-deep);color:var(--accent-hi)}
+:focus-visible{outline-color:var(--accent)}
+option{background:var(--panel);color:var(--text)}
+
+/* shell */
+aside{background:var(--panel);border-right-color:var(--line)}
+.brand{color:var(--accent-hi)}
+.mark{background:var(--accent);color:var(--on-accent)}
+.beta,.section-label,.sidebar-note,.account small,.muted{color:var(--faint)}
+.sidebar-note p{color:var(--faint)}
+.new{border-color:var(--line);color:var(--text)}
+.new:hover{border-color:var(--accent);background:var(--raised)}
+a.nav{color:var(--muted)}a.nav:hover{background:var(--raised);color:var(--text)}
+.active{background:var(--accent-deep);color:var(--accent-hi)}
+.dot{background:var(--accent)}
+.account{border-top-color:var(--line)}
+.avatar{border-color:var(--line);color:var(--accent-hi)}
+header{border-bottom-color:var(--line-soft);color:var(--faint)}
+header span:not(.badge){color:var(--line)}
+header strong{color:var(--text)}
+.badge{border-color:var(--line);color:var(--accent)}
+
+/* welcome */
+.eyebrow{color:var(--accent)}
+h1 em{color:var(--accent)}
+#welcome>p{color:var(--muted)}
+.suggestions button{border-color:var(--line);color:var(--text)}
+.suggestions button:hover{background:var(--raised);border-color:var(--accent-deep)}
+.suggestions span{color:var(--faint)}
+
+/* composer */
+#chat-form{background:var(--raised);border-color:var(--line);box-shadow:0 8px 30px #00000066}
+textarea{color:var(--text)}
+textarea::placeholder{color:var(--faint)}
+select{color:var(--muted);border-color:var(--line);background:var(--panel)}
+.mini{background:var(--panel);border-color:var(--line);color:var(--muted)}
+.concise-toggle{color:var(--muted)}
+.concise-toggle input,.props input[type=checkbox]{accent-color:var(--accent)}
+#send,.primary-btn{background:var(--accent);color:var(--on-accent)}
+#send:hover:not(:disabled),.primary-btn:hover:not(:disabled){background:var(--accent-hi)}
+.footnote{color:var(--faint)}
+.notice,.note-status,.warnings li{background:#15130a;border-color:#2c2815;color:var(--warn)}
+#error,.note-status.error{background:#241410;border-color:#43241c;color:var(--danger)}
+
+/* messages */
+.message{border-bottom-color:var(--line-soft)}
+.message .who{color:var(--accent)}
+.message.user{color:var(--muted)}
+.sources details{border-color:var(--line);background:var(--panel)}
+.sources small{color:var(--muted)}
+.markdown a{color:var(--accent-hi)}
+.markdown pre,.markdown code{background:#0a0f0c;color:#bfe5cb}
+.markdown pre{border:1px solid var(--line-soft)}
+.markdown blockquote{border-left-color:var(--accent);color:var(--muted)}
+.markdown th,.markdown td{border-color:var(--line)}
+.markdown th{background:var(--raised)}
+
+/* single-stream thinking panel */
+.thinking{white-space:normal;margin:10px 0 16px;padding:2px 0 2px 14px;border-left:2px solid var(--accent-deep);font-size:13px;color:var(--muted)}
+.thinking>summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;user-select:none;font-size:12px;letter-spacing:.3px;color:var(--accent)}
+.thinking>summary::-webkit-details-marker{display:none}
+.thinking>summary::before{content:"›";display:inline-block;transition:transform .15s}
+.thinking[open]>summary::before{transform:rotate(90deg)}
+.thinking.live>summary::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);animation:aria-pulse 1.2s ease-in-out infinite}
+@keyframes aria-pulse{50%{opacity:.2}}
+.thinking .stream{margin-top:10px;display:flex;flex-direction:column;gap:7px;max-height:320px;overflow:auto}
+.thinking .thought{margin:0;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+.thinking .step{font:11px/1.5 Consolas,Menlo,monospace;color:var(--faint);overflow-wrap:anywhere}
+.thinking .step ul{margin:3px 0 0;padding-left:16px}
+
+/* login dialog */
+dialog{background:var(--raised);border-color:var(--line);color:var(--text)}
+dialog::backdrop{background:#000000b3}
+dialog p{color:var(--muted)}
+dialog input{background:var(--bg);border-color:var(--line);color:var(--text)}
+dialog button{background:var(--panel);color:var(--text)}
+dialog .primary{background:var(--accent);color:var(--on-accent)}
+#login-error{color:var(--danger)}
+
+/* notes editor */
+#list .folder{color:var(--faint)}
+#list button:hover{background:var(--raised)}
+#list button[aria-current="true"]{background:var(--accent-deep);color:var(--accent-hi)}
+#editor{background:var(--panel);border-color:var(--line);color:var(--text)}
+#editor:disabled{background:var(--bg)}
+.note-footer{color:var(--faint)}
+.props{color:var(--muted)}
+.props input[type=text],.props input:not([type]){background:var(--panel);border-color:var(--line);color:var(--text)}
+.props .toggle{color:var(--accent-hi)}
+
+/* import */
+.lede{color:var(--muted)}
+.hint,.actions #count{color:var(--faint)}
+#paste,#sample{background:var(--panel);border-color:var(--line);color:var(--text)}
+.facts dt{color:var(--faint)}.facts dd{color:var(--text)}
+.legend,#paths{color:var(--muted)}
+.added{background:var(--accent-deep);color:var(--accent-hi)}
+#done a{color:var(--accent-hi)}

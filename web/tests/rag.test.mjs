@@ -112,3 +112,12 @@ test('API keeps all model-driven searches in the authenticated selected vault an
   assert.ok(bodies.every(b=>!JSON.stringify(b).includes('DELETED SECRET EVIDENCE')));
   assert.ok(bodies.every(b=>JSON.parse(b.contents[0].parts[0].text).operatorMessage===scenario));
 });
+
+test('discrepancies reported by the planner reach the final answer context',async()=>{
+  let call=0,seen;
+  await researchVault({message:'I live in Georgia. ZIP 10001.',search:async()=>[],generate:async request=>{
+    if(++call===1)return {answer:JSON.stringify({discrepancies:['Georgia vs ZIP 10001 (New York)'],queries:[]})};
+    seen=JSON.parse(request.contents[0].parts[0].text);return {answer:'Confirm the state.'};
+  }});
+  assert.deepEqual(seen.discrepancies,['Georgia vs ZIP 10001 (New York)']);
+});
