@@ -1,5 +1,17 @@
 # Quick Note implementation and activation
 
+## Moving notes and the simpler interface
+
+Run `web/supabase/010_note_moves.sql` after 008 before deploying this update. Update/restart your local sync agent from this repository as well. No new environment variables are needed.
+
+Quick Note now has a compact composer and history list. Right-click a filed note (or use its `⋯` button) and choose **Move to…**. Select any of your vaults, then choose a folder or type a new folder path. Manual filing does not require automatic-filing opt-in. The Notes explorer and open note tabs have the same right-click action. Drag notes or tabs onto an explorer folder or **/ Vault root** to move within the current vault. The destination expands and selects the moved note. Save unsaved drafts before moving; collisions and concurrent edits are rejected without overwriting another note.
+
+Use the sidebar button above the editor to collapse/expand the left explorer, drag its right edge to resize it (or focus the divider and use arrow keys), and use the expand-all/collapse-all buttons for folders. Desktop width and collapse preference persist in this browser. On mobile the explorer opens as an overlay.
+
+Moves preserve the note ID and text, update its search chunks, and leave a source-path move marker in one database transaction. Quick history follows the same note ID. Returning the same note to its previous location is supported; unrelated existing/deleted filenames are protected. Explicit Markdown links are left as written; review path-based/relative links after changing folders or vaults.
+
+The updated sync agent recognizes the move marker. It archives an unchanged old local copy in the vault’s hidden `.aria-moved` folder and pulls the destination through its normal sync. Locally edited old copies remain untouched and report a move conflict; copy those edits into the destination before manually retiring the old file. Both vaults need local sync pairing for a cross-vault move to appear in both Obsidian vaults. Older sync clients cannot re-upload moved source paths; they report a save failure until updated. Ordinary deletions keep the existing conservative sync behavior.
+
 ## Refined plan
 
 - `008_quick_notes.sql` adds an owner-readable queue, per-vault filing opt-in, and a dedicated Unsorted vault. It is safe to rerun, including when a personal vault is already named Unsorted.

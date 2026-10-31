@@ -81,6 +81,16 @@ export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
     send(200, { ok: true, description });
     return true;
   }
+  if (req.method === 'POST' && route === '/api/note-move') {
+    const b=await readJson(req),vault=vaultOf(b.vault,fail),toVault=vaultOf(b.toVault,fail),path=cleanPath(b.path),toPath=cleanPath(b.toPath);
+    if(!Number.isInteger(b.baseVersion)||b.baseVersion<1)throw fail('baseVersion required.');
+    const rows=await sb(`/rest/v1/aria_notes?select=content,version&deleted=eq.false&vault_id=eq.${vault}&path=eq.${encodeURIComponent(path)}`,token);
+    if(!rows.length)throw fail('Note was moved or deleted. Refresh and try again.',404);
+    if(rows[0].version!==b.baseVersion)throw fail('Note changed elsewhere. Save or reload it before moving.',409);
+    const r=await sb('/rest/v1/rpc/aria_move_note',token,{p_vault:vault,p_path:path,p_base_version:b.baseVersion,p_to_vault:toVault,p_to_path:toPath,p_chunks:chunkMarkdown(rows[0].content)});
+    if(!r.ok)throw fail(r.reason==='exists'?'That destination already has this filename. Choose another folder.':r.reason==='conflict'?'Note changed elsewhere. Reload before moving.':r.reason==='invalid_vault'?'Destination vault not found.':'Note could not be moved.',['exists','conflict'].includes(r.reason)?409:400);
+    send(200,r);return true;
+  }
   if (req.method === 'POST' && route === '/api/note-delete') {
     const b = await readJson(req), vault = vaultOf(b.vault, fail), path = cleanPath(b.path);
     if (!Number.isInteger(b.baseVersion) || b.baseVersion < 1) throw fail('baseVersion required.');

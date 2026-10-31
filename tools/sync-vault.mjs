@@ -1,4 +1,5 @@
 import { readdir, lstat, readFile, writeFile, mkdir, realpath, rename } from 'node:fs/promises';
+import {retireMovedFile} from './sync-moves.mjs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,8 +87,8 @@ async function resolveVault(token, name, create) {
 async function listRemote(token, vaultId) {
   const out = new Map();
   for (let from = 0; ; from += 1000) {
-    const rows = await sb('/rest/v1/aria_notes?select=path,content_hash,version,deleted&vault_id=eq.' + vaultId + '&order=path.asc', { token, headers: { 'Range-Unit': 'items', Range: `${from}-${from + 999}` } });
-    for (const n of rows) out.set(n.path, { hash: n.content_hash, version: n.version, deleted: n.deleted });
+    const rows = await sb('/rest/v1/aria_notes?select=path,content_hash,version,deleted,moved_to&vault_id=eq.' + vaultId + '&order=path.asc', { token, headers: { 'Range-Unit': 'items', Range: `${from}-${from + 999}` } });
+    for (const n of rows) out.set(n.path, { hash: n.content_hash, version: n.version, deleted: n.deleted, movedTo:n.moved_to });
     if (rows.length < 1000) return out;
   }
 }
@@ -141,6 +142,16 @@ async function run(o) {
     try {
       if (a.type === 'adopt') state.notes[p] = { hash: local.get(p), version: a.remoteVersion };
       else if (a.type === 'forget') delete state.notes[p];
+      else if(a.type==='move-conflict'){
+        console.warn(`  MOVE CONFLICT ${p}: changed locally after moving in Aria. Copy your edits into the destination note, then archive this old local copy.`);failures++;
+      }
+      else if(a.type==='retire-moved'){
+        const rows=await sb(`/rest/v1/aria_notes?select=deleted,moved_to,content_hash,version&vault_id=eq.${vaultId}&path=eq.${encodeURIComponent(p)}`,{token});
+        const latest=rows[0];
+        if(!latest?.deleted||latest.moved_to!==a.movedTo||latest.version!==a.remoteVersion){console.warn(`  move changed during sync, skipped: ${p}`);failures++;continue;}
+        const backup=await retireMovedFile(vault.canonical,p,latest.content_hash);
+        delete state.notes[p];console.log(`  moved source archived: ${backup}`);
+      }
       else if (a.type === 'push') {
         const text = vault.files.get(p).text;
         const r = await sb('/rest/v1/rpc/aria_save_note', { token, body: { p_vault: vaultId, p_path: p, p_content: text, p_base_version: a.baseVersion, p_origin: 'local', p_chunks: chunkMarkdown(text) } });

@@ -6,6 +6,8 @@ See [current workspace, chat memory, screenshot input and resumable research](..
 
 ## Quick Note
 
+The compact capture view supports **Move to…** from right-click or `⋯`. Notes and open tabs also support this action and drag-and-drop onto explorer folders. The explorer can collapse, expand all folders, and resize. Apply `supabase/010_note_moves.sql` after 008 and update/restart the local sync agent before using moves. See [move behavior and activation](../docs/QUICK-NOTES.md#moving-notes-and-the-simpler-interface).
+
 The **QUICK** tab captures up to 12,000 characters in Concise or Detailed mode, keeps an exact original, and files an organized copy. Only vaults explicitly enabled in **Notes → vault description → Allow Quick Note to file here** receive automatic placements. Uncertain or invalid model results go to the migration-created Unsorted vault. New notes start with AI search off; history provides the current search toggle, destination, original text, retry, and removal of pending/failed jobs.
 
 Apply migration `supabase/008_quick_notes.sql` after 007 **before deploying the updated app**. Then configure the background worker using [the Quick Note setup and verification guide](../docs/QUICK-NOTES.md). Browser kicks work with your current sign-in; filing after the app closes requires migration 009 plus the worker environment and Vault secrets. This release supplies those migrations; it does not automatically apply them to your hosted project.

@@ -9,6 +9,12 @@ export function planSync({ local, remote, base, resolve = {} }) {
   for (const path of [...paths].sort()) {
     const L = local.get(path), r = remote.get(path), R = r && !r.deleted ? r : undefined, B = base.get(path);
     let a = null;
+    if(r?.deleted&&r.movedTo){
+      if(L===undefined)a=B?{type:'forget'}:null;
+      else a={type:L===r.hash?'retire-moved':'move-conflict',movedTo:r.movedTo,remoteVersion:r.version};
+      if(a)actions.push({path,...a});
+      continue; // Never resurrect a moved source path, even with --resolve=local.
+    }
     if (!R) {
       if (L === undefined) a = B ? { type: 'forget' } : null;
       else a = { type: 'push', baseVersion: r ? r.version : 0 };

@@ -20,7 +20,7 @@ export async function runQuickQueue({rpc,generate,now=Date.now,budgetMs=45000}) 
         const r=await rpc('aria_quick_finish',{p_id:job.id,p_lease:job.lease_token,p_vault:plan.vault,p_path:quickPath(plan,suffix),p_content:content,p_confidence:plan.confidence});
         if (r.ok) { saved=true; filed++; break; }
         if (r.reason==='stale') return {filed};
-        if (r.reason!=='conflict') throw new Error(r.reason==='invalid_vault' ? 'Vault filing permission changed. Retry to choose another destination.' : 'Quick note could not be saved.');
+        if (!['conflict','moved'].includes(r.reason)) throw new Error(r.reason==='invalid_vault' ? 'Vault filing permission changed. Retry to choose another destination.' : 'Quick note could not be saved.');
       }
       if (!saved) throw new Error('Too many notes with this title. Retry later.');
     } catch (error) {

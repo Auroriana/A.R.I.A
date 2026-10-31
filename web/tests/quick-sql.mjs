@@ -29,6 +29,7 @@ try {
  await db.exec('create function public.aria_quick_tick() returns void language sql as $$select$$; revoke all on function public.aria_quick_tick() from public,anon,authenticated;');
  await db.exec(sql);
  assert.equal(await scalar("select has_function_privilege('authenticated','public.aria_quick_tick()','execute') v"),false,'rerunning 008 must not grant access to the admin cron tick');
+ const moveSql=await readFile(new URL('../supabase/010_note_moves.sql',import.meta.url),'utf8');await db.exec(moveSql);await db.exec(moveSql);
  assert.equal(await scalar('select count(*)::int v from public.aria_vaults where is_unsorted'),1,'migration reruns once');
  const fallback=await scalar('select id v from public.aria_vaults where is_unsorted');
  const target=await scalar('select id v from public.aria_vaults where not is_unsorted');
@@ -57,6 +58,21 @@ try {
  assert.equal(await scalar('select count(*)::int v from public.aria_notes'),1,'atomic finish cannot create a duplicate');
  assert.equal(await scalar('select content v from public.aria_notes'),content);
  let history=await rpc('aria_quick_list',0);assert.equal(history[0].ai_enabled,false);assert.equal(history[0].status,'filed');
+ const noteId=await scalar("select id v from public.aria_notes where not deleted");
+ for(const path of ['../Escape.md','98 Private/Secret.md','con.txt/File.md','Folder//Note.md'])assert.equal((await rpc('aria_move_note',fallback,'Test.md',1,target,path,'[]')).reason,'invalid');
+ assert.equal((await rpc('aria_move_note',fallback,'Test.md',99,target,'Inbox/Test.md','[]')).reason,'conflict');
+ assert.equal((await rpc('aria_move_note',fallback,'Test.md',1,fallback,'Reviewed/Test.md','[]')).ok,true);
+ assert.equal((await rpc('aria_save_note',fallback,'Test.md',content,2,'local','[]')).reason,'moved','old sync client cannot resurrect source');
+ assert.equal((await rpc('aria_move_note',fallback,'Reviewed/Test.md',2,target,'Inbox/Test.md','[]')).ok,true);
+ assert.equal(await scalar("select id v from public.aria_notes where not deleted"),noteId,'move retains note identity');
+ history=await rpc('aria_quick_list',0);assert.equal(history[0].vault_id,target);assert.equal(history[0].path,'Inbox/Test.md');assert.equal(history[0].version,3);
+ assert.equal((await rpc('aria_move_note',target,'Inbox/Test.md',3,fallback,'Test.md','[]')).ok,true,'move back into own old path');
+ assert.equal(await scalar("select count(*)::int v from public.aria_notes where not deleted"),1);
+ await rpc('aria_save_note',target,'Taken.md','# Existing',0,'web','[]');
+ assert.equal((await rpc('aria_move_note',fallback,'Test.md',4,target,'Taken.md','[]')).reason,'exists');
+ await rpc('aria_delete_note',target,'Taken.md',1);
+ assert.equal((await rpc('aria_move_note',fallback,'Test.md',4,target,'Taken.md','[]')).reason,'exists','unrelated deleted path also blocks collisions');
+ assert.equal((await rpc('aria_move_note',fallback,'Test.md',4,fallback,'TEST.md','[]')).path,'Test.md','case-only move is a no-op');
  assert.equal((await rpc('aria_folder_map')).length,1,'only fallback until opted in');
  await rpc('aria_set_vault_quick',target,true);
  // Seed ordinary folders + forbidden nested folders; only directory names may leave DB.
@@ -68,7 +84,7 @@ try {
  // Move uses the workspace's copy-then-delete pattern; history follows the frontmatter ID.
  await db.exec('reset role');
  await rpc('aria_save_note',target,'Ideas/Moved.md',content.replace('ai_enabled: false','ai_enabled: true'),0,'web',JSON.stringify([{heading:'Test',content:'42.50'}]));
- await rpc('aria_delete_note',fallback,'Test.md',1);
+ await rpc('aria_delete_note',fallback,'Test.md',4);
  await db.exec('set role authenticated');
  history=await rpc('aria_quick_list',0);assert.equal(history[0].path,'Ideas/Moved.md');assert.equal(history[0].ai_enabled,true);assert.equal(history[0].note_deleted,false);
  await db.exec('reset role');await rpc('aria_delete_note',target,'Ideas/Moved.md',1);await db.exec('set role authenticated');

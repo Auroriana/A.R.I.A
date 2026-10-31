@@ -1,6 +1,6 @@
 /* Obsidian-style structure, Aria's existing monochrome palette. */
 #notes{--note-line:#262626;--note-muted:#888;--note-panel:#080808}
-.notes-workspace{display:grid;grid-template-columns:260px minmax(0,1fr);height:100%;min-height:0}
+.notes-workspace{display:grid;grid-template-columns:var(--explorer-width,260px) 5px minmax(0,1fr);height:100%;min-height:0}
 .file-explorer{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--note-line);background:var(--note-panel)}
 .explorer-tools{display:flex;align-items:center;gap:3px;padding:12px 10px;border-bottom:1px solid #191919}
 .explorer-tools b{margin-right:auto;font-size:10px;font-weight:400;letter-spacing:.14em;color:#999}
@@ -58,3 +58,16 @@ input[type=checkbox]:not(.sw>input):checked::after{transform:scale(1)}
 input[type=checkbox]:not(.sw>input):hover:not(:disabled){border-color:#fff}
 input[type=checkbox]:disabled{opacity:.5;cursor:default}
 .note-properties label,.props label{display:inline-flex;align-items:center;gap:6px}
+
+/* Explorer size, folder drop targets and the shared move picker. */
+.explorer-resize{cursor:col-resize;touch-action:none;background:#111}.explorer-resize:hover,.explorer-resize:focus{background:#666}
+.notes-workspace.explorer-collapsed{grid-template-columns:0 0 minmax(0,1fr)}
+.notes-workspace.explorer-collapsed .file-explorer,.notes-workspace.explorer-collapsed .explorer-resize{visibility:hidden;overflow:hidden}
+.tree-row.drop-target{background:#303030!important;outline:1px solid #aaa;outline-offset:-1px}
+#move-root{border-radius:0;color:#777;font-size:11px;padding-left:18px}
+.move-dialog{width:min(460px,92vw)}.move-dialog h2{font-size:17px;font-weight:400}.move-name{font-size:12px;color:#999;overflow-wrap:anywhere;margin:8px 0 16px}
+.move-dialog label{display:block;margin:10px 0;font-size:12px}.move-dialog input,.move-dialog select{display:block;width:100%;max-width:none;margin-top:5px;padding:6px}
+.move-folders{max-height:210px;overflow:auto;border:1px solid #333}.move-folders button{display:block;width:100%;text-align:left;border:0;font-size:12px}.move-folders button.selected{background:#282828}
+.move-error{font-size:12px;color:#bbb;margin-top:10px}.move-error:empty{display:none}
+@media(min-width:581px) and (max-width:860px){.notes-workspace{grid-template-columns:min(var(--explorer-width,260px),40vw) 5px minmax(0,1fr)}}
+@media(max-width:580px){.notes-workspace,.notes-workspace.explorer-collapsed{grid-template-columns:minmax(0,1fr)}.explorer-resize{display:none}.notes-workspace.explorer-open .file-explorer{display:flex;visibility:visible;width:min(var(--explorer-width,260px),85vw)}.explorer-tools{padding:8px 5px}}

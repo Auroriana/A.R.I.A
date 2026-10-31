@@ -1,13 +1,13 @@
 const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
 
-export function mountQuick(root,{api,open,confirm:confirmBox}) {
-  root.innerHTML=`<div class="quick-workspace"><div class="quick-heading"><span class="who">CAPTURE</span><h1>A thought, before it slips away.</h1><p>Aria organizes it into an opted-in vault. Uncertain notes go to Unsorted.</p></div>
-    <form id="quick-form"><label class="sr-only" for="quick-text">Quick note</label><textarea id="quick-text" rows="6" maxlength="12000" placeholder="An idea, a reminder, something worth keeping…" required></textarea>
-    <div class="quick-controls"><label class="sw"><input id="quick-detailed" type="checkbox"><i></i><span id="quick-mode">Concise</span></label><button id="quick-send">Send ↗</button></div>
-    <p class="quick-help">Original text is always kept. AI search starts off. Note text and eligible folder names are sent to Gemini.</p></form>
+export function mountQuick(root,{api,open,move,confirm:confirmBox}) {
+  root.innerHTML=`<div class="quick-workspace"><h1>Quick note</h1>
+    <form id="quick-form"><label class="sr-only" for="quick-text">Quick note</label><textarea id="quick-text" rows="3" maxlength="12000" placeholder="Write a note…" required></textarea>
+    <div class="quick-controls"><label class="sw"><input id="quick-detailed" type="checkbox"><i></i><span id="quick-mode">Concise</span></label><button id="quick-send">Send</button></div>
+    <p class="quick-help">Organized with Gemini · Original kept · AI search off by default</p></form>
     <p id="quick-status" role="status" aria-live="polite"></p><div id="quick-outbox"></div>
-    <div class="quick-history-heading"><h2>Recent captures</h2><button id="quick-refresh" type="button">Refresh</button></div><div id="quick-history"></div>
-    <div class="quick-pages"><button id="quick-prev">Newer</button><button id="quick-next">Older</button></div></div>`;
+    <div class="quick-history-heading"><h2>Recent notes</h2><button id="quick-refresh" type="button">Refresh</button></div><div id="quick-history"></div>
+    <div id="quick-menu" class="ctx" role="menu" hidden></div><div class="quick-pages"><button id="quick-prev">Newer</button><button id="quick-next">Older</button></div></div>`;
   const $=id=>root.querySelector('#'+id);
   let account='',epoch=0,offset=0,rows=[],timer,flushing=false,kicking=false,refreshing=false;
   const key=()=>`aria.quick.outbox.${account}`;
@@ -28,10 +28,11 @@ export function mountQuick(root,{api,open,confirm:confirmBox}) {
     if(!rows.length)list.append(element('p','Your quick notes will appear here.'));
     for(const n of rows){
       const card=element('article');card.className='quick-item';
+      if(n.status==='filed'&&!n.note_deleted){card.oncontextmenu=e=>{e.preventDefault();showMenu(e.clientX,e.clientY,n);};}
       const top=element('div');top.className='quick-item-top';
       const title=element(n.status==='filed'&&!n.note_deleted?'button':'strong',n.title||n.text.slice(0,80));
       if(title.tagName==='BUTTON'){title.className='quick-note-link';title.onclick=()=>open(n.path,n.vault_id);}
-      const pill=element('span',n.note_deleted?'Note deleted':n.status);pill.className='quick-pill '+n.status;top.append(title,pill);card.append(top);
+      const pill=element('span',n.note_deleted?'Note deleted':n.status);pill.className='quick-pill '+n.status;top.append(title,pill);if(n.status==='filed'&&!n.note_deleted){const more=element('button','⋯');more.className='quick-more';more.setAttribute('aria-label','Actions for '+n.title);more.onclick=e=>{e.stopPropagation();const r=more.getBoundingClientRect();showMenu(r.left,r.bottom,n);};top.append(more);}card.append(top);
       const where=n.path?`${n.vault_name??'Vault'} / ${n.path}`:'Awaiting filing';card.append(element('small',where+' · '+new Date(n.created_at).toLocaleString()));
       if(n.error)card.append(element('p',n.error+(n.status==='queued'?' Next attempt: '+new Date(n.next_attempt_at).toLocaleTimeString():'')));
       if(n.status==='filed'&&n.confidence<0.75)card.append(element('p','Kept in Unsorted for your review.'));
@@ -52,6 +53,12 @@ export function mountQuick(root,{api,open,confirm:confirmBox}) {
     }
     $('quick-prev').disabled=offset===0;$('quick-next').disabled=rows.length<50;
   }
+  const hideMenu=()=>{$('quick-menu').hidden=true;};
+  function showMenu(x,y,n){
+    const menu=$('quick-menu');menu.replaceChildren();const b=element('button','Move to…');b.setAttribute('role','menuitem');b.onclick=async()=>{hideMenu();try{const r=await move(n.path,n.vault_id,n.version);if(r){tell('Note moved.');await refresh();}}catch(e){tell(e.message);}};menu.append(b);menu.hidden=false;menu.style.left=Math.max(4,Math.min(x,innerWidth-menu.offsetWidth-8))+'px';menu.style.top=Math.max(4,Math.min(y,innerHeight-menu.offsetHeight-8))+'px';b.focus();
+  }
+  document.addEventListener('click',hideMenu);document.addEventListener('keydown',e=>{if(e.key==='Escape')hideMenu();});root.addEventListener('scroll',hideMenu,true);window.addEventListener('resize',hideMenu);
+  window.addEventListener('aria-note-moved',()=>refresh());
   async function kick(){
     if(!account||kicking)return;const ticket=epoch;kicking=true;
     try{await api('quick-kick',{});if(ticket===epoch)await refresh();}
@@ -102,6 +109,6 @@ export function mountQuick(root,{api,open,confirm:confirmBox}) {
   return {
     init(identity){account=identity;epoch++;offset=0;rows=[];render();try{renderOutbox();}catch(e){tell(e.message);}void flush();schedule();},
     refresh(){void refresh();},
-    clear(){account='';epoch++;rows=[];clearTimeout(timer);$('quick-text').value='';$('quick-history').replaceChildren();$('quick-outbox').replaceChildren();tell('');}
+    clear(){hideMenu();account='';epoch++;rows=[];clearTimeout(timer);$('quick-text').value='';$('quick-history').replaceChildren();$('quick-outbox').replaceChildren();tell('');}
   };
 }

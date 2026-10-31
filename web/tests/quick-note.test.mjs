@@ -54,6 +54,11 @@ test('reservation refusal and provider 429 requeue and stop the entire run',asyn
     assert.equal(f.calls.find(c=>c.name==='aria_quick_fail').body.p_retry_after,900);
   }
 });
+test('quick filing skips protected moved-source filenames without another generation',async()=>{
+  let attempts=0,generated=0;const f=queueFixture({generate:async()=>{generated++;return result();},finish:()=>++attempts===1?{ok:false,reason:'moved'}:{ok:true}});
+  assert.equal((await runQuickQueue(f)).filed,1);assert.equal(generated,1);
+  assert.equal(f.calls.filter(c=>c.name==='aria_quick_finish')[1].body.p_path,'Ideas/Follow up (2).md');
+});
 test('stale worker stops without attempting to fail the new lease',async()=>{
   const f=queueFixture({finish:()=>({ok:false,reason:'stale'})});await runQuickQueue(f);
   assert.ok(!f.calls.some(c=>c.name==='aria_quick_fail'));
