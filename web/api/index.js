@@ -2,10 +2,12 @@ import {models,validateChat} from '../lib/models.js';
 import {noteRoutes} from '../lib/notes-api.js';
 import {gemini,geminiStream,embed} from '../lib/providers.js';
 import {describeVault} from '../lib/vault-describe.js';
-import {researchVault,researchStep,createResearchState,CONCISE_INSTRUCTION} from '../lib/rag.js';
+import {researchVault,researchStep,createResearchState,CONCISE_INSTRUCTION,keywordQuery} from '../lib/rag.js';
 import {sealCheckpoint,openCheckpoint,requestHash} from '../lib/checkpoint.js';
 import {proposeLayout} from '../lib/note-format.js';
 import {cleanContent,isUuid} from '../lib/notes.js';
+// Routing and gap-checking never touch the selected (possibly 5/min, 20/day) model.
+const PLANNER_MODEL='gemini-3.5-flash-lite';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
 async function sb(route,token,body,method=body?'POST':'GET') {
@@ -18,12 +20,6 @@ function setCookie(res,value,age){res.setHeader('Set-Cookie',`aria_session=${val
 async function readBody(req,limit=40000){
   if(req.body) {if(Buffer.byteLength(JSON.stringify(req.body))>limit)throw fail('Request too large.',413);return typeof req.body==='string'?JSON.parse(req.body):req.body;}
   let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>limit)throw fail('Request too large.',413);}return raw?JSON.parse(raw):{};
-}
-const authCache=new Map();
-async function verify(token){
-  const hit=authCache.get(token);if(hit&&hit.until>Date.now())return hit.user;
-  const user=await verify(token);
-  if(authCache.size>50)authCache.clear();authCache.set(token,{user,until:Date.now()+60000});return user;
 }
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');
@@ -52,7 +48,7 @@ export default async function handler(req,res){
     const user=await sb('/auth/v1/user',token);
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
-	if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
+    if(await noteRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send}))return;
     if(req.method==='GET'&&route==='/api/notes-stamp'){
       const v=new URL(req.url,'http://localhost').searchParams.get('vault');
       if(!isUuid(v))throw fail('Choose a vault.');
@@ -102,18 +98,20 @@ export default async function handler(req,res){
     const onProgress=event=>{if(streaming)emit('progress',event);};
     const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
     const generate=async (request,{phase='answer',round}={})=>{
-      if(model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:phase==='planning'?'medium':'low'}}};
+      // Routing and planning only emit short JSON, so they run on the light model (own quota, no deep thinking).
+      const use=phase==='planning'||phase==='route'?PLANNER_MODEL:model;
+      if(use==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'low'}}};
       // Base64 bytes aren't text tokens. Reserve a conservative per-attachment allowance.
       const textRequest=JSON.stringify(request, (key,value)=>key==='inlineData'?{mimeType:value.mimeType}:value);
-      await reserve(model,Buffer.byteLength(textRequest)+files.length*4096+request.generationConfig.maxOutputTokens);
-      if(!streaming)return gemini(model,request);
+      await reserve(use,Buffer.byteLength(textRequest)+files.length*4096+request.generationConfig.maxOutputTokens);
+      if(!streaming)return gemini(use,request);
       if(generationController.signal.aborted)throw fail('The overall response time limit was reached or the chat connection closed.',504);
       const callId=++generationId;let hasSummary=false;
-      onProgress({stage:'thought-start',callId,phase,round,model});
-      const result=await geminiStream(model,request,{
+      onProgress({stage:'thought-start',callId,phase,round,model:use});
+      const result=await geminiStream(use,request,{
         signal:generationController.signal,
         onThought:text=>{hasSummary=true;onProgress({stage:'thought-summary',callId,text});},
-        onAnswerStarted:()=>onProgress({stage:'model-output',message:phase==='planning'?'Gemini is preparing its search requests.':'Gemini is writing the answer; checking citations before displaying it.'})
+        onAnswerStarted:()=>onProgress({stage:'model-output',message:phase==='planning'||phase==='route'?'Gemini is preparing its search requests.':'Gemini is writing the answer; checking citations before displaying it.'})
       });
       onProgress({stage:'thought-end',callId,hasSummary});return result;
     };
@@ -125,17 +123,25 @@ export default async function handler(req,res){
         let scope=vault,vector=null;
         // Models may only pick among vaults inside the scope the user selected.
         if(!scope&&target){const hit=(await loadVaults()).find(v=>v.name.trim().toLowerCase()===target.trim().toLowerCase());if(hit)scope=hit.id;}
+        // The 'simple' text config has no stop words, so filler is removed and wordings are expanded here.
+        const rows=await loadVaults(),keywords=keywordQuery(query);
+        onProgress({stage:'searching',vault:scope?(rows.find(v=>v.id===String(scope).toLowerCase())?.name??'selected vault'):'all vaults',sent:keywords});
         if(initial&&process.env.ENABLE_SEMANTIC_SEARCH==='true'){await reserve('gemini-embedding-2',Buffer.byteLength(query));vector=await embed(query);}
-        return sb('/rest/v1/rpc/aria_search',token,{p_query:query,p_embedding:vector,p_vault:scope??null});
+        return sb('/rest/v1/rpc/aria_search',token,{p_query:keywords,p_embedding:vector,p_vault:scope??null});
       };
+      const routeOn=process.env.ENABLE_ROUTER!=='false';
+      const options={message,search,generate,concise,onProgress,files,history,overview:getOverview,route:routeOn};
       // Old assistant answers and deleted evidence never become fresh vault evidence.
       if(incoming.resumable===true){
         const hash=requestHash(validated),state=incoming.continuation?openCheckpoint(incoming.continuation,user.id,hash):createResearchState();
-        const next=await researchStep({state,message,search,generate,concise,onProgress,files,history,overview:getOverview});
+        // Run several steps per HTTP request (saves round trips); checkpoint only if the time budget runs out.
+        const started=Date.now();
+        let next=await researchStep({...options,state});
+        while(!next.result&&Date.now()-started<120000)next=await researchStep({...options,state:next.state});
         if(next.result)return send(200,{...next.result,model});
         return send(200,{continuation:sealCheckpoint(next.state,user.id,hash),research:{searches:next.state.searches.length,planningCalls:next.state.planningCalls},model});
       }
-      return send(200,{...await researchVault({message,search,generate,concise,onProgress,files,history,overview:getOverview}),model});
+      return send(200,{...await researchVault(options),model});
     }
     const system='You are Aria, a thoughtful personal research assistant. This is general chat; you have not searched the user’s vault. Be clear about uncertainty.'+(concise?CONCISE_INSTRUCTION:'');
     const contents=[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message},...files]}];

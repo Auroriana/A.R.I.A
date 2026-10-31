@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {researchVault,RAG_LIMITS} from '../lib/rag.js';
+import {researchVault,RAG_LIMITS,keywordQuery} from '../lib/rag.js';
 import handler from '../api/index.js';
 
 const passage=(id,title=String(id),content=`Content ${id}`)=>({id:String(id),title,source_path:`${id}.md`,vault_name:'Insurance',content});
@@ -69,6 +69,13 @@ test('malformed or truncated plans stop research visibly without treating model 
   }
 });
 
+test('plans wrapped in prose or with a null vault are still accepted',async()=>{
+  let calls=0,searches=[];
+  const wrapped={answer:'Here you go: {"queries":[{"q":"ID card","vault":null}]} hope that helps'};
+  const result=await researchVault({message:'Question',search:async(q,o)=>{searches.push({q,...o});return [passage(searches.length)];},generate:async()=>++calls===1?wrapped:calls===2?plan([]):{answer:'Answer [S1].'}});
+  assert.equal(searches.length,2);assert.equal(searches[1].q,'ID card');assert.equal(searches[1].vault,undefined);assert.deepEqual(result.research.warnings,[]);
+});
+
 test('citations outside the merged evidence set are rejected, including with no results',async()=>{
   for(const answer of ['Answer [S0].','Answer [S2].']){
     let n=0;
@@ -76,6 +83,12 @@ test('citations outside the merged evidence set are rejected, including with no 
   }
   let n=0;
   await assert.rejects(researchVault({message:'Question',search:async()=>[],generate:async()=>++n===1?plan([]):{answer:'[S1]'}}),/invalid source/);
+});
+
+test('sources report which passages were read and which were cited',async()=>{
+  let calls=0;
+  const result=await researchVault({message:'Question',search:async()=>[passage(1),passage(2)],generate:async()=>++calls===1?plan([]):{answer:'Only the first matters [S1].'}});
+  assert.deepEqual(result.sources.map(s=>[s.id,s.read,s.cited]),[['S1',true,true],['S2',true,false]]);
 });
 
 test('upstream research failures propagate without retries or model fallback',async()=>{
@@ -87,8 +100,48 @@ test('upstream research failures propagate without retries or model fallback',as
   assert.equal(searches,2);
 });
 
+test('keywordQuery drops filler words and expands family and date wordings',()=>{
+  const words=keywordQuery('When is my moms birthday and how is she? and my dads cause of death too please.').split(' ');
+  for(const w of ['mother','born','father','died','cause'])assert.ok(words.includes(w),w);
+  for(const w of ['is','and','she','my','when','please','too'])assert.ok(!words.includes(w),w);
+  assert.equal(keywordQuery('the and of'),'the and of');
+});
+
+const vaultsMap=[{name:'Lumina Records',description:'Personal records',topFolders:['00 Max Level Clearance'],searchable:true},{name:'Insurance',description:'Procedures',topFolders:['Policies'],searchable:true}];
+
+test('router sends a lookup straight to the answer with no gap-check call',async()=>{
+  const phases=[],searches=[],events=[];
+  const route={answer:JSON.stringify({intent:'lookup',queries:[{q:'mother birthday born',vault:'Lumina Records'}],reason:'personal fact'})};
+  const result=await researchVault({message:'When is my moms birthday?',route:true,overview:async()=>vaultsMap,onProgress:e=>events.push(e),
+    search:async(q,o)=>{searches.push({q,...o});return [passage(1)];},
+    generate:async(request,meta)=>{phases.push(meta?.phase??'answer');return meta?.phase==='route'?route:{answer:'Born on a date [S1].'};}});
+  assert.deepEqual(phases,['route','answer']);
+  assert.equal(searches.length,1);assert.equal(searches[0].vault,'Lumina Records');assert.equal(searches[0].initial,false);
+  assert.equal(result.sources[0].cited,true);
+  const scope=events.find(e=>e.stage==='scope');
+  assert.deepEqual(scope.vaults.map(v=>[v.name,v.state]),[['Lumina Records','search'],['Insurance','skip']]);
+});
+
+test('router answers questions about the vaults themselves without any search',async()=>{
+  const phases=[];let searches=0;
+  const route={answer:JSON.stringify({intent:'vaults',queries:[],reason:'directory question'})};
+  const result=await researchVault({message:'Which vault has personal information?',route:true,overview:async()=>vaultsMap,
+    search:async()=>{searches++;return [];},
+    generate:async(request,meta)=>{phases.push(meta?.phase??'answer');return meta?.phase==='route'?route:{answer:'Lumina Records holds personal records.'};}});
+  assert.deepEqual(phases,['route','answer']);assert.equal(searches,0);assert.deepEqual(result.sources,[]);
+});
+
+test('invalid routing falls back to the normal search and planner',async()=>{
+  const phases=[];let initial;
+  const result=await researchVault({message:'Question',route:true,overview:async()=>vaultsMap,
+    search:async(q,o)=>{initial??=o.initial;return [passage(1)];},
+    generate:async(request,meta)=>{const p=meta?.phase??'answer';phases.push(p);return p==='route'?{answer:'nope'}:p==='planning'?plan([]):{answer:'Done [S1].'};}});
+  assert.deepEqual(phases,['route','planning','answer']);assert.equal(initial,true);
+  assert.match(result.research.warnings[0],/Routing was invalid/);
+});
+
 test('API keeps all model-driven searches in the authenticated selected vault and reserves every generation',async t=>{
-  const env={SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'public',OWNER_USER_ID:'owner',GEMINI_API_KEY:'test',GEMINI_FREE_TIER_CONFIRMED:'true',ENABLE_SEMANTIC_SEARCH:'false'};
+  const env={SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'public',OWNER_USER_ID:'owner',GEMINI_API_KEY:'test',GEMINI_FREE_TIER_CONFIRMED:'true',ENABLE_SEMANTIC_SEARCH:'false',ENABLE_ROUTER:'false'};
   const previous=Object.fromEntries(Object.keys(env).map(k=>[k,process.env[k]]));Object.assign(process.env,env);
   t.after(()=>{for(const [k,v] of Object.entries(previous))if(v===undefined)delete process.env[k];else process.env[k]=v;});
   const vault='a81a0000-0000-4000-8000-0000000000f1',events=[],bodies=[];

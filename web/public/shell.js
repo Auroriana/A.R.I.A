@@ -18,7 +18,7 @@ function md(root,text){renderMarkdown(root,text,{citations:true,notes:workspace.
 // ---- messages, references (collapsed), citation highlight
 function msg(role,text){const it=el('article');it.className='m '+role;const w=el('div','YOU');if(role!=='user')w.textContent='ARIA';w.className='who';const b=el('div');b.className='md';if(role==='user')b.textContent=text;else b.textContent=text;it.append(w,b);$('msgs').append(it);$('welcome').hidden=true;$('scroll').scrollTop=1e9;return it}
 function refs(it,src){if(!src.length)return;const d=el('details');d.className='refs';d.append(el('summary','References ('+src.length+')'));
- for(const x of src){const e=el('details');e.className='src';e.dataset.s=x.id;e.dataset.path=x.path;const p=el('div');p.className='ex';p.dataset.t=x.excerpt;
+ for(const x of src){const e=el('details');e.className='src';e.dataset.s=x.id;e.dataset.path=x.path;e.dataset.vault=x.vault||'';const p=el('div');p.className='ex';p.dataset.t=x.excerpt;
  renderMarkdown(p,x.excerpt,{path:x.path,notes:workspace.notes,onLink:async link=>{tab(true);const v=[...document.querySelector('#nv').options].find(o=>o.textContent===x.vault);await workspace.openReference(link,x.path,v?.value);}});
  const sm=el('small',(x.vault?x.vault+' / ':'')+x.path.replace(/\.md$/i,'')),open=el('button','Open note ↗');open.className='open-source';open.onclick=()=>openSource(x.path,x.vault);
  e.append(el('summary','['+x.id+'] '+x.title),sm,p,open);d.append(e)}it.append(d)}
@@ -29,22 +29,38 @@ $('msgs').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const it=b.clo
  const mk=hl(src.querySelector('.ex'),b.dataset.claim);src.querySelector('.warn')?.remove();
  const lg=s=>new Set((s.match(/\b(and|or)\b/gi)||[]).map(x=>x.toLowerCase())),c=lg(b.dataset.claim),g=lg([...src.querySelectorAll('mark')].map(m=>m.textContent).join(' '));
  if(c.size&&g.size&&![...c].some(x=>g.has(x))){const w=el('div','Check: the answer says “'+[...c].join('/')+'” but this passage says “'+[...g].join('/')+'”.');w.className='warn';src.querySelector('small').after(w)}
- lit(src.dataset.path);(mk||src).scrollIntoView({block:'center',behavior:'smooth'})};
-// ---- vault path sidebar
-const trail=$('trail'),nodes=new Map(),dirs=new Map();let order=0;
-function dir(path){if(!path)return trail;if(dirs.has(path))return dirs.get(path);const i=path.lastIndexOf('/'),par=dir(i<0?'':path.slice(0,i)),f=el('div'),h=el('div',path.slice(i+1)),k=el('div');h.className='fh';k.className='fk';f.append(h,k);par.append(f);dirs.set(path,k);return k}
-function file(n){let d=nodes.get(n.path);if(d){d.classList.remove('hot');void d.offsetWidth;d.classList.add('hot');return}
- const i=n.path.lastIndexOf('/');d=el('div');d.className='fi hot';d.append(el('span',n.path.slice(i+1).replace(/\.md$/i,'')),el('b',String(++order)));dir(i<0?'':n.path.slice(0,i)).append(d);nodes.set(n.path,d);d.scrollIntoView({block:'nearest',behavior:'smooth'})}
+ lit(src.dataset.vault,src.dataset.path);(mk||src).scrollIntoView({block:'center',behavior:'smooth'})};
+// ---- PATH sidebar: vault -> folder -> note, with a search log and the state of every note
+const trail=$('trail'),nodes=new Map(),dirs=new Map(),boxes=new Map(),slog=el('div');let order=0;slog.id='slog';$('cur').after(slog);
+const key=(v,p)=>(v||'')+'\u0000'+p;
+function box(v){let b=boxes.get(v);if(!b){const w=el('div'),h=el('div',v||'Vault');h.className='vn';b=el('div');b.head=h;w.append(h,b);trail.append(w);boxes.set(v,b)}return b}
+function dir(v,path){if(!path)return box(v);const k=key(v,path);if(dirs.has(k))return dirs.get(k);const i=path.lastIndexOf('/'),par=dir(v,i<0?'':path.slice(0,i)),f=el('div'),h=el('div',path.slice(i+1)),kids=el('div');h.className='fh';kids.className='fk';kids.head=h;f.append(h,kids);par.append(f);dirs.set(k,kids);return kids}
+function file(n){const k=key(n.vault,n.path);let d=nodes.get(k);
+ if(d){d.hits++;d.classList.remove('hot');void d.offsetWidth;d.classList.add('hot');d.lastChild.textContent='matched ×'+d.hits;return}
+ const i=n.path.lastIndexOf('/'),parent=dir(n.vault,i<0?'':n.path.slice(0,i));
+ d=el('div');d.className='fi hot';d.hits=1;d.title=n.title;d.append(el('span',n.path.slice(i+1).replace(/\.md$/i,'')),el('b','matched'));parent.append(d);nodes.set(k,d);
+ for(let p=parent;p&&p!==trail;p=p.parentElement)p.head?.classList.add('used');d.scrollIntoView({block:'nearest',behavior:'smooth'})}
+function scope(ev){$('cur').textContent=ev.reason||ev.intent;for(const v of ev.vaults){const b=box(v.name);b.head.classList.toggle('skip',v.state!=='search');b.head.dataset.s=v.state==='search'?'searching':v.state==='skip'?'skipped':'not searchable';for(const f of v.folders)dir(v.name,f).head.classList.add('dim')}}
+// After the answer: each note ends as cited, read-but-not-cited, or not read (over the context budget).
+function markUsed(src){
+ const best=new Map();
+ for(const s of src){const rank=s.cited?3:s.read?2:1,k=key(s.vault,s.path),cur=best.get(k);if(!cur||rank>cur.rank)best.set(k,{rank,id:s.id})}
+ for(const [k,b] of best){const d=nodes.get(k);if(!d)continue;d.classList.remove('hot','rd','ct');
+  if(b.rank===3){d.classList.add('ct');d.lastChild.textContent='cited ['+b.id+']'}
+  else if(b.rank===2){d.classList.add('rd');d.lastChild.textContent='read, not cited'}
+  else d.lastChild.textContent='not read (over budget)'}}
 const cool=()=>trail.querySelectorAll('.hot').forEach(n=>n.classList.remove('hot'));
-function lit(path){nodes.forEach(n=>n.classList.remove('lit','hot'));const n=nodes.get(path);if(n){n.classList.add('lit');n.scrollIntoView({block:'nearest',behavior:'smooth'})}}
+function lit(v,path){nodes.forEach(n=>n.classList.remove('lit','hot'));const n=nodes.get(key(v,path));if(n){n.classList.add('lit');n.scrollIntoView({block:'nearest',behavior:'smooth'})}}
 function onProgress(it,ev){
- if(ev.stage==='search'){cool();$('cur').textContent='⌕ '+(first?'your question':ev.query.length>90?ev.query.slice(0,90)+'…':ev.query);first=false}
- else if(ev.stage==='results'){for(const n of ev.notes)file(n)}
- else if(ev.stage==='planning'||ev.stage==='answering'){it.querySelector('.md').textContent=ev.message;if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
+ if(ev.stage==='search'){cool()}
+ else if(ev.stage==='scope')scope(ev);
+ else if(ev.stage==='searching'){$('cur').textContent='⌕ '+ev.vault;slog.append(el('div',(slog.children.length+1)+'. '+ev.vault+' · '+ev.sent))}
+ else if(ev.stage==='results'){if(slog.lastChild)slog.lastChild.textContent+=' → '+ev.notes.length+(ev.notes.length===1?' passage':' passages');for(const n of ev.notes)file(n)}
+ else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'){it.querySelector('.md').textContent=ev.message;if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
  else if(ev.stage==='thought-summary'){let t=it.querySelector('.th');if(!t){t=el('details');t.className='th';t.append(el('summary','Thinking'),el('div'));it.querySelector('.who').after(t)}t.lastChild.append(ev.text)}}
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
-function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();order=0;trail.replaceChildren();$('cur').textContent=''}
+function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent=''}
 const GEM='<svg viewBox="0 0 24 24"><path d="M12 2c.5 5.5 4.5 9.5 10 10-5.5.5-9.5 4.5-10 10-.5-5.5-4.5-9.5-10-10 5.5-.5 9.5-4.5 10-10z"/></svg>',DS='<svg viewBox="0 0 24 24"><path d="M2 14c0-4 4-8 10-8 4 0 7 2 8 5l2-2-.5 6c-1 3-5 5-10 5-5 0-9.5-2-9.5-6z"/><circle cx="9" cy="12" r=".8"/></svg>';
 function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.className='pg';g.innerHTML=GEM+'GEMINI';p.append(g);
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
@@ -90,7 +106,7 @@ async function runPending(){
   }
   const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
   const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
-  md(it.querySelector('.md'),text);refs(it,shown);cool();
+  md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
   currentChat.messages.push({role:'model',text,sources:shown});currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;it.querySelector('.md').textContent='Research paused: '+message;err(message+' Your progress is saved. Use Resume research to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
@@ -99,7 +115,7 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
  const text=$('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':'');if(!text)return;
  if(currentChat?.pending){err('Resume the pending question or start a new conversation.');return;}
  currentChat??=blankChat();history=conversationMemory(currentChat.messages);
- const sent=files;files=[];renderAtt();$('q').value='';nodes.clear();dirs.clear();order=0;trail.replaceChildren();$('cur').textContent='';
+ const sent=files;files=[];renderAtt();$('q').value='';nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';
  const display=text+(sent.length?'\n'+sent.map(f=>'[attached: '+f.name+']').join(' '):'');msg('user',display);
  if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({role:'user',text:display});
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
