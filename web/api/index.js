@@ -1,6 +1,6 @@
 import {models,validateChat} from '../lib/models.js';
 import {noteRoutes} from '../lib/notes-api.js';
-import {gemini,embed} from '../lib/providers.js';
+import {gemini,geminiStream,embed} from '../lib/providers.js';
 import {researchVault,CONCISE_INSTRUCTION} from '../lib/rag.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
@@ -17,7 +17,8 @@ async function readBody(req){
 }
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');
-  let streaming=false,heartbeat;
+  let streaming=false,heartbeat,deadlineTimer;const generationController=new AbortController();
+  const disconnect=()=>{if(!res.writableEnded)generationController.abort('disconnected');};
   const emit=(type,data)=>{if(!res.destroyed&&!res.writableEnded)res.write(JSON.stringify({type,...data})+'\n');};
   const send=(status,data)=>{if(streaming){emit(data.error?'error':'result',data);res.end();}else{res.statusCode=status;res.end(JSON.stringify(data));}};
   try{
@@ -49,12 +50,23 @@ export default async function handler(req,res){
       streaming=true;res.setHeader('Content-Type','application/x-ndjson');res.setHeader('X-Accel-Buffering','no');res.flushHeaders?.();
       heartbeat=setInterval(()=>emit('heartbeat',{}),10000);
     }
+    if(streaming){deadlineTimer=setTimeout(()=>generationController.abort('deadline'),270000);res.on?.('close',disconnect);}
+    let generationId=0;
     const onProgress=event=>{if(streaming)emit('progress',event);};
     const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
-    const generate=async request=>{
+    const generate=async (request,{phase='answer',round}={})=>{
       if(model==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'low'}}};
       await reserve(model,Buffer.byteLength(JSON.stringify(request))+request.generationConfig.maxOutputTokens);
-      return gemini(model,request);
+      if(!streaming)return gemini(model,request);
+      if(generationController.signal.aborted)throw fail('The overall response time limit was reached or the chat connection closed.',504);
+      const callId=++generationId;let hasSummary=false;
+      onProgress({stage:'thought-start',callId,phase,round,model});
+      const result=await geminiStream(model,request,{
+        signal:generationController.signal,
+        onThought:text=>{hasSummary=true;onProgress({stage:'thought-summary',callId,text});},
+        onAnswerStarted:()=>onProgress({stage:'model-output',message:phase==='planning'?'Gemini is preparing its search requests.':'Gemini is writing the answer; checking citations before displaying it.'})
+      });
+      onProgress({stage:'thought-end',callId,hasSummary});return result;
     };
     if(mode==='vault'){
       const search=async(query,{initial})=>{
@@ -73,5 +85,5 @@ export default async function handler(req,res){
     const result=await generate(request);
     send(200,{...result,model,sources:[]});
   }catch(error){send(error.status??500,{error:error.status?error.message:['TimeoutError','AbortError'].includes(error.name)?'The upstream request timed out. Please try again.':error instanceof TypeError?'Could not connect to an upstream service. Check server connectivity and configuration.':'Request could not be completed. Check configuration or try again later.'});}
-  finally{clearInterval(heartbeat);}
+  finally{clearInterval(heartbeat);clearTimeout(deadlineTimer);res.off?.('close',disconnect);}
 }

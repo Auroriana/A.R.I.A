@@ -53,7 +53,7 @@ export async function researchVault({message,search,generate,concise=false,onPro
   const context=()=>JSON.stringify({operatorMessage:message,evidence:sources.map((s,i)=>({id:`S${i+1}`,title:s.title,path:s.source_path,vault:s.vault_name,content:s.content})),searches,warnings});
   for(let round=0;round<RAG_LIMITS.rounds;round++) {
     onProgress({stage:'planning',round:round+1,message:'Checking which information is still missing.'});
-    const plan=await generate({systemInstruction:{parts:[{text:RESEARCH_SYSTEM}]},contents:[{role:'user',parts:[{text:context()}]}],generationConfig:{maxOutputTokens:2048}});
+    const plan=await generate({systemInstruction:{parts:[{text:RESEARCH_SYSTEM}]},contents:[{role:'user',parts:[{text:context()}]}],generationConfig:{maxOutputTokens:2048}},{phase:'planning',round:round+1});
     planningCalls++;
     let queries;
     try {if(plan.truncated)throw new Error('Truncated plan');queries=parseQueries(plan.answer,seenQueries);}

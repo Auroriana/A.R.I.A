@@ -42,9 +42,10 @@ test('HTTP streaming emits progress before generation finishes and returns model
     assert.equal(events[0].stage,'answering');assert.equal(ended,false);
     const body=JSON.parse(options.body);assert.match(body.systemInstruction.parts[0].text,/Keep the answer concise/);
     assert.equal(body.generationConfig.thinkingConfig.thinkingLevel,'low');assert.equal(body.generationConfig.maxOutputTokens,8192);
-    return {ok:true,json:async()=>({candidates:[{content:{parts:[{thought:true,text:'private'},{text:'## Answer\n**Yes**'}]}}]})};
+    assert.ok(url.includes(':streamGenerateContent?alt=sse'));assert.equal(body.generationConfig.thinkingConfig.includeThoughts,true);
+    return new Response('data: '+JSON.stringify({candidates:[{content:{parts:[{thought:true,text:'Public summary',thoughtSignature:'private-signature'},{text:'## Answer\n**Yes**'}]},finishReason:'STOP'}]})+'\n\n',{headers:{'content-type':'text/event-stream'}});
   });
   const res={setHeader(){},write(value){events.push(JSON.parse(value));},end(){ended=true;}};
   await handler({url:'/api/chat',method:'POST',headers:{host:'localhost',cookie:'aria_session=test','content-type':'application/json',accept:'application/x-ndjson'},body:{model:'gemini-3.8-flash',message:'test',mode:'general',concise:true}},res);
-  assert.equal(ended,true);assert.equal(events.at(-1).type,'result');assert.ok(!JSON.stringify(events).includes('private'));
+  assert.equal(ended,true);assert.equal(events.at(-1).type,'result');assert.ok(!JSON.stringify(events).includes('private-signature'));assert.ok(events.some(e=>e.stage==='thought-summary'&&e.text==='Public summary'));
 });
