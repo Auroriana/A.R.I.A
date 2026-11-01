@@ -1,3 +1,5 @@
+import {mountCoreSettings} from '/core-settings.js';
+import {addUsage} from '/token-usage.js';
 import {estimateQuestion,usageTitle} from '/token-usage.js';
 import {renderMarkdown,highlightClaim} from '/note-renderer.js';
 import {mountWorkspace} from '/workspace.js';
@@ -6,6 +8,11 @@ import {conversationMemory,listChats,saveChat,deleteChat} from '/chat-store.js';
 
 const $=id=>document.getElementById(id),el=(t,x)=>{const n=document.createElement(t);if(x!==undefined)n.textContent=x;return n};
 let history=[],signedIn=false,busy=false,cfg,first=true,owner="",currentChat=null,chatController=null;
+const core=mountCoreSettings({api,owner:()=>owner,busy:()=>busy,onArchive:async()=>{archiveError=null;archived.clear();for(const c of [...await listChats(owner)].reverse())archive(c);await archiveQueue;if(archiveError)throw archiveError;await loadVaults();}});
+let archiveQueue=Promise.resolve(),archiveError=null;const archived=new Map();
+function archive(c){const account=owner,snapshot=structuredClone(c),fingerprint=JSON.stringify(snapshot.messages);if(!account||!snapshot.messages.length||archived.get(account+':'+c.id)===fingerprint)return;archiveQueue=archiveQueue.then(async()=>{if(owner!==account)return;const result=await api('history-archive',snapshot);if(result.vault&&![...$('vault').options].some(o=>o.value===result.vault)){const selected=$('vault').value;await loadVaults();$('vault').value=selected;}archived.set(account+':'+snapshot.id,fingerprint)}).catch(e=>{archiveError=e;err('History vault sync failed: '+e.message+' The browser copy is still available.');});}
+function personalityToggle(it,m){if(!m.personality)return;const button=el('button','Show original');button.className='personality-toggle';let styled=true;md(it.querySelector('.md'),m.personality);button.onclick=()=>{styled=!styled;md(it.querySelector('.md'),styled?m.personality:m.text);button.textContent=styled?'Show original':'Show personality'};it.append(button);}
+async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const d=await r.json();if(!r.ok)throw new Error(d.error||'Personality unavailable.');return d;}
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
 const quick=mountQuick($('quick'),{api,confirm:confirmAction,move:(path,vault,version)=>workspace.move(path,vault,version),open:async(path,vault)=>{tab(true);await workspace.open(path,vault);}});
 async function api(p,b){const r=await fetch('/api/'+p,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
@@ -28,7 +35,7 @@ function refs(it,src){if(!src.length)return;const d=el('details');d.className='r
 async function openSource(path,vaultName){tab(true);const opts=[...document.querySelector('#nv').options],v=opts.find(o=>o.textContent===vaultName);await workspace.open(path,v?.value);}
 const hl=highlightClaim;
 $('msgs').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const it=b.closest('.m'),src=it.querySelector('.src[data-s="'+b.dataset.s+'"]');if(!src)return;
- it.querySelector('.refs').open=true;it.querySelectorAll('.src').forEach(x=>x.open=x===src);it.querySelectorAll('.c').forEach(x=>x.classList.toggle('on',x===b));
+ src.closest('.refs').open=true;it.querySelectorAll('.src').forEach(x=>x.open=x===src);it.querySelectorAll('.c').forEach(x=>x.classList.toggle('on',x===b));
  const mk=hl(src.querySelector('.ex'),b.dataset.claim);src.querySelector('.warn')?.remove();
  const lg=s=>new Set((s.match(/\b(and|or)\b/gi)||[]).map(x=>x.toLowerCase())),c=lg(b.dataset.claim),g=lg([...src.querySelectorAll('mark')].map(m=>m.textContent).join(' '));
  if(c.size&&g.size&&![...c].some(x=>g.has(x))){const w=el('div','Check: the answer says “'+[...c].join('/')+'” but this passage says “'+[...g].join('/')+'”.');w.className='warn';src.querySelector('small').after(w)}
@@ -77,7 +84,7 @@ function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.c
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
  const d=el('div');d.className='pg off';d.innerHTML=DS+'DEEPSEEK · OFF';p.append(d)}
 function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('mp').title=m?.name||'';}
-async function acct(email){signedIn=true;owner=email;$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();quick.init(owner);if(location.hash==='#notes')tab(true);if(location.hash==='#quick')tab('quick');}
+async function acct(email){signedIn=true;owner=email;await core.load().catch(()=>{});$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();quick.init(owner);if(location.hash==='#notes')tab(true);if(location.hash==='#quick')tab('quick');}
 async function loadVaults(){try{const{vaults}=await api('vaults');const v=$('vault');v.replaceChildren(new Option('All vaults','all'));for(const x of vaults)v.append(new Option(x.name,x.id));await workspace.init(vaults,owner);}catch(e){err(e.message)}}
 function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');$('vault').hidden=v!=='vault';if(currentChat){currentChat.mode=v;persistChat();}}
 $('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode('vault');
@@ -87,7 +94,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.pick'))$('pm').hidd
 $('pt').onclick=()=>$('app').classList.toggle('pt');
 $('skip').onclick=()=>$('login').close();
 $('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{await acct((await api('login',{email:$('email').value,password:$('pw').value})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
-$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();workspace.clear();quick.clear();owner='';currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
+$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();workspace.clear();quick.clear();owner='';core.clear();currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 
 function blankChat(){return {id:crypto.randomUUID(),title:'New conversation',updated:Date.now(),messages:[],mode:$('mode').value,vault:$('vault').value||'all',model:$('model').value,pending:null};}
@@ -96,20 +103,22 @@ async function refreshHistory(){const chats=await listChats(owner),box=$('chat-h
   const x=el('button','×');x.className='hist-del';x.setAttribute('aria-label','Delete conversation');x.onclick=e=>{e.stopPropagation();removeChat(c.id)};row.append(b,x);box.append(row)}}
 const closeHist=()=>{if(matchMedia('(max-width:860px)').matches)$('app').classList.add('hc')};
 async function openChat(id){if(busy)return;const c=(await listChats(owner)).find(c=>c.id===id);if(c){displayChat(c);await refreshHistory();closeHist()}}
-async function removeChat(id){if(busy||!await confirmAction('Delete this conversation? It is only stored in this browser.','Delete'))return;await deleteChat(owner,id);if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
-async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
+async function removeChat(id){if(busy||!await confirmAction('Delete this browser conversation? Its History vault archive remains available.','Delete'))return;await deleteChat(owner,id);if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
+async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);archive(currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
 function displayChat(c){reset();currentChat=c;$('mode').value=c.mode||'general';$('mc').classList.toggle('on',c.mode!=='vault');$('mv').classList.toggle('on',c.mode==='vault');$('vault').hidden=c.mode!=='vault';$('vault').value=c.vault||'all';if(cfg.models.some(m=>m.id===c.model))$('model').value=c.model;buildModels();upd();
- for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);}}
+ for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);if(m.ack){const ack=el('div',m.ack);ack.className='ack';it.querySelector('.who').after(ack)}personalityToggle(it,m);}}
  history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume research';estimateDraft();
 }
-async function restoreChats(){try{const chats=await listChats(owner);if(chats[0])displayChat(chats[0]);await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
+async function restoreChats(){try{const chats=await listChats(owner);for(const c of [...chats].reverse())archive(c);if(chats[0])displayChat(chats[0]);await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
 $('new-chat').onclick=()=>{if(busy)return;reset();currentChat=null;$('resume-chat').hidden=true;refreshHistory();closeHist();$('q').focus()};
 $('resume-chat').onclick=()=>{if(!busy&&currentChat?.pending)runPending();};
-function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp','concise','new-chat','vault'])$(id).disabled=value;$('resume-chat').hidden=value||!currentChat?.pending;$('pause-chat').hidden=!value;}
+function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp','concise','new-chat','vault','aria-settings'])$(id).disabled=value;$('resume-chat').hidden=value||!currentChat?.pending;$('pause-chat').hidden=!value;}
 $('pause-chat').onclick=()=>chatController?.abort();
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
  const pending=currentChat.pending,it=msg('model',pending.continuation?'Continuing research…':'Thinking…');first=true;
+ const settings=pending.body.settings,personalityOn=settings?.enabled;let ackResult=null;
+ const ack=personalityOn&&!pending.continuation?personalityCall({...pending.body,action:'ack'},chatController.signal).then(d=>{ackResult=d;const n=el('div',d.answer);n.className='ack';it.querySelector('.who').after(n);return d}).catch(()=>null):Promise.resolve(null);
  showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(pending.body.message,pending.body.history,pending.body.files),estimated:true});
  try{
   let result;
@@ -120,7 +129,12 @@ async function runPending(){
   const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
   const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
   md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
-  currentChat.messages.push({role:'model',text,sources:shown,usage:result.usage});currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
+  const saved={role:'model',text,sources:shown,usage:result.usage};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
+  if(personalityOn){
+    await ack;if(ackResult){saved.ack=ackResult.answer;saved.usage=addUsage(saved.usage,ackResult.usage);showUsage(it,saved.usage)}
+    try{const styled=await personalityCall({...pending.body,action:'rewrite',answer:text},chatController.signal);saved.personality=styled.answer;saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);showUsage(it,saved.usage)}catch(e){err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
+    await persistChat();
+  }
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;it.querySelector('.md').textContent='Research paused: '+message;err(message+' Your progress is saved. Use Resume research to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
 }
@@ -132,7 +146,8 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
  const display=text+(sent.length?'\n'+sent.map(f=>'[attached: '+f.name+']').join(' '):'');msg('user',display);
  if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({role:'user',text:display});
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
- currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,concise:$('concise').checked,files:sent.map(({mime,data})=>({mime,data}))}};
+ const overview=(await listChats(owner)).filter(c=>c.id!==currentChat.id).map(c=>({title:c.title,recent:c.messages.slice(-4).map(m=>({role:m.role,text:m.text.slice(0,1500)}))}));
+ currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,concise:$('concise').checked,settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
  await persistChat();await runPending();};
 // ---- attachments (images are shrunk to JPEG <=1600px; PDFs sent as-is; ~2.8 MB total)
 let files=[];

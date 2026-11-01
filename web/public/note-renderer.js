@@ -24,7 +24,7 @@ export function renderMarkdown(root, text, options = {}) {
       parent.append(node);
     }
   }
-  const tokens = /\\[\\`*_[\]{}()#+.!>~-]|`[^`\n]+`|!?\[\[[^\]\n]+\]\]|\[S\d+\]|\[[^\]\n]+\]\((?:<[^>\n]+>|[^\s)]+)(?:\s+"[^"]*")?\)|<(?:span|font)\b[^>]*>[\s\S]*?<\/(?:span|font)>|<(?:b|strong|em|i|u|s|mark)>[\s\S]*?<\/(?:b|strong|em|i|u|s|mark)>|\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~\n]+~~|==[^=\n]+==|"[^"\n]+"|“[^”\n]+”/g;
+  const tokens = /\\[\\`*_[\]{}()#+.!>~-]|`[^`\n]+`|!?\[\[[^\]\n]+\]\]|\[[SP]\d+\]|\[[^\]\n]+\]\((?:<[^>\n]+>|[^\s)]+)(?:\s+"[^"]*")?\)|<(?:span|font)\b[^>]*>[\s\S]*?<\/(?:span|font)>|<(?:b|strong|em|i|u|s|mark)>[\s\S]*?<\/(?:b|strong|em|i|u|s|mark)>|\*\*\*[^*\n]+\*\*\*|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~\n]+~~|==[^=\n]+==|"[^"\n]+"|“[^”\n]+”/g;
   function inline(parent, value, offset = 0, depth = 0) {
     if (depth > 12) { plain(parent, value, offset); return; }
     let at = 0;
@@ -33,8 +33,8 @@ export function renderMarkdown(root, text, options = {}) {
       const t = m[0]; let n;
       if (t[0] === '\\') n = doc.createTextNode(t.slice(1));
       else if (t[0] === '`') n = el('code', t.slice(1,-1));
-      else if (/^\[S\d+\]$/.test(t) && options.citations) {
-        n = el('button', t); n.type = 'button'; n.className = 'c'; n.dataset.s = t.slice(1,-1); n.dataset.claim = value.replace(/\[S\d+\]/g,'');
+      else if (/^\[[SP]\d+\]$/.test(t) && options.citations) {
+        n = el('button', t); n.type = 'button'; n.className = 'c'; n.dataset.s = t.slice(1,-1); n.dataset.claim = value.replace(/\[[SP]\d+\]/g,'');
       } else if (/^!?\[\[/.test(t) || /^\[[^\]]+\]\(/.test(t)) {
         const wiki = /^!?\[\[/.test(t), parts = wiki ? null : /^\[([^\]]+)\]\((<[^>]+>|[^\s)]+)/.exec(t);
         const ref = wiki ? parseTarget(t.replace(/^!?\[\[|\]\]$/g,'')) : parseTarget(parts[2], parts[1], false);

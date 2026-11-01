@@ -1,0 +1,10 @@
+#aria-settings{border:0;background:none;padding:0;color:inherit;cursor:pointer}#aria-settings:hover{color:#aaa}
+#core-settings{width:min(800px,94vw);max-height:90dvh;overflow:auto;padding:24px}
+#core-settings::backdrop{background:#000b}#core-settings h2{margin:0;font-size:20px;font-weight:400}
+.settings-heading,.settings-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}
+#core-settings button{width:auto;margin:0;padding:8px 14px}.core-models{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+#core-settings label{display:block;margin:12px 0}#core-settings select{display:block;width:100%;margin-top:8px;padding:8px}
+#core-settings input[type=checkbox]{display:inline-grid;width:16px;height:16px;padding:0;margin-right:8px}.settings-help{color:#aaa;font-size:12px;line-height:1.6}
+.core-prompts details{border-top:1px solid #333;padding:12px 0}.core-prompts textarea{width:100%;margin-top:12px;padding:10px;resize:vertical;line-height:1.5}
+.personality-toggle{margin-top:12px;font-size:12px}.ack{color:#aaa;font-size:13px;margin-bottom:12px}
+@media(max-width:600px){.core-models{grid-template-columns:1fr}#core-settings{padding:16px}}

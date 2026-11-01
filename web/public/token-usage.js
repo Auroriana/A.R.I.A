@@ -12,4 +12,4 @@ export function addUsage(a,b){
   for(const key of fields)if(a?.[key]!==undefined||b?.[key]!==undefined)out[key]=(a?.[key]||0)+(b?.[key]||0);
   return out;
 }
-export function usageTitle(usage){return (usage.estimated?'Estimated tokens':'Tokens reported by Gemini')+' · '+[['Input','promptTokenCount'],['Output','candidatesTokenCount'],['Thinking','thoughtsTokenCount']].map(([name,key])=>name+': '+(usage[key]??'unavailable')).join(' · ');}
+export function usageTitle(usage){return (usage.estimated?'Estimated tokens':'Tokens reported by models')+' · '+[['Input','promptTokenCount'],['Output','candidatesTokenCount'],['Thinking','thoughtsTokenCount']].map(([name,key])=>name+': '+(usage[key]??'unavailable')).join(' · ');}
