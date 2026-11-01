@@ -1,5 +1,14 @@
 # ARIA development progress
 
+## 2026-11-01 — Phase 2, Part IV complete
+
+- Added optional owner/scope-authenticated source snapshots for reflective vault follow-ups: 15-minute TTL, at most 12 complete cited passages / 24,000 body characters. Reuse never renews expiry.
+- Router resolves references from dialogue and can select snapshot reuse; new facts, procedural decisions and verification retain fresh retrieval. Prior assistant answers are never treated as cached source evidence.
+- Source IDs are remapped per response, old IDs removed from research history, and grouped citation validation strengthened. References visibly label earlier snapshots; personality keeps compact context and independent retrieval.
+- New history retains clean answer text rather than UI research counters; no conversation truncation or generated summary added.
+- Two-turn mocked API fixture: initial retrieval followed by zero additional passage searches. Full web suite passed at 110 tests; final affected tests passed after adding the 111th test. Browser reload/follow-up/persistence check passed. No live token savings claimed.
+- Details and freshness limitations: [Part IV context handling](PART-IV-FOLLOWUP-CONTEXT.md). No deployment or database changes. Await the next explicit phase.
+
 ## 2026-11-01 — Phase 2, Part III complete
 
 - Verified that the existing handoff sends a reasoning draft rather than the full RAG dataset. Added explicit citation identities and prior-search status without copying raw passages or shortening factual qualifications/history.

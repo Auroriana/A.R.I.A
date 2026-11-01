@@ -16,6 +16,7 @@ export function validateChat(body) {
   if(vault!==null&&!isUuid(vault)) throw new Error('Choose a valid vault.');
   if(body.concise!==undefined&&typeof body.concise!=='boolean')throw Object.assign(new Error('Concise must be a boolean.'),{status:400});
   const concise=body.concise??false;
+  if(body.followupCache!==undefined&&body.followupCache!==null&&(typeof body.followupCache!=='string'||body.followupCache.length>200000))throw Object.assign(new Error('Invalid follow-up cache.'),{status:400});
   const history=body.history??[];
   if(!Array.isArray(history)||history.length>200||history.some(m=>!['user','model'].includes(m.role)||typeof m.text!=='string'||m.text.length>40000)||JSON.stringify(history).length>180000) throw new Error('Conversation memory is too large for one request. Start a new chat.');
   const files = body.files ?? [];
@@ -29,5 +30,5 @@ export function validateChat(body) {
     const valid = f.mime === 'image/png' ? b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : f.mime === 'image/jpeg' ? b[0] === 255 && b[1] === 216 && b[2] === 255 : f.mime === 'image/webp' ? b.toString('ascii',0,4) === 'RIFF' && b.toString('ascii',8,12) === 'WEBP' : b.toString('ascii',0,5) === '%PDF-';
     if (!valid || bytes > 3_900_000) throw badFile();
   }
-  return {model:model.id,message:body.message.trim(),mode:body.mode,history,vault,concise,files:files.map(({mime,data})=>({inlineData:{mimeType:mime,data}}))};
+  return {model:model.id,message:body.message.trim(),mode:body.mode,history,vault,concise,...(body.followupCache?{followupCache:body.followupCache}:{}),files:files.map(({mime,data})=>({inlineData:{mimeType:mime,data}}))};
 }

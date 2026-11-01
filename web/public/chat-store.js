@@ -4,7 +4,7 @@ export function conversationMemory(messages){
   const out=[];let chars=0;
   for(const m of [...messages].reverse()){
     if(!['user','model'].includes(m.role))continue;
-    const text=(m.role==='model'?(m.personality||m.text):m.text).slice(0,40000),size=JSON.stringify({role:m.role,text}).length;
+    const text=(m.role==='model'?(m.personality||m.reasoningText||m.text):m.text).slice(0,40000),size=JSON.stringify({role:m.role,text}).length;
     if(chars+size>160000||out.length>=200)break;
     chars+=size;out.unshift({role:m.role,text});
   }

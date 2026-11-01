@@ -39,6 +39,7 @@ function refs(it,src){if(!src.length)return;const d=el('details');d.className='r
  for(const x of src){const e=el('details');e.className='src';e.dataset.s=x.id;e.dataset.path=x.path;e.dataset.vault=x.vault||'';const p=el('div');p.className='ex';p.dataset.t=x.excerpt;
  renderMarkdown(p,x.excerpt,{path:x.path,notes:workspace.notes,onLink:async link=>{tab(true);const v=[...document.querySelector('#nv').options].find(o=>o.textContent===x.vault);await workspace.openReference(link,x.path,v?.value);}});
  const sm=el('small',(x.vault?x.vault+' / ':'')+x.path.replace(/\.md$/i,'')),open=el('button','Open note ↗');open.className='open-source';open.onclick=()=>openSource(x.path,x.vault);
+ if(x.snapshotCapturedAt)sm.append(' · Earlier snapshot: '+new Date(x.snapshotCapturedAt).toLocaleString());
  e.append(el('summary','['+x.id+'] '+x.title),sm,p,open);d.append(e)}it.append(d)}
 async function openSource(path,vaultName){tab(true);const opts=[...document.querySelector('#nv').options],v=opts.find(o=>o.textContent===vaultName);await workspace.open(path,v?.value);}
 const hl=highlightClaim;
@@ -138,7 +139,7 @@ async function runPending(){
   const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
   const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
   if(personalityOn)setStatus(it,'Preparing Aria’s response…');else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
-  const saved={role:'model',text,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
+  const saved={role:'model',text,reasoningText:result.answer,followupCache:result.followupCache??null,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
   if(personalityOn){
     try{saved.webContext=personalityHandoff(pending.body,result);const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
     await persistChat();
@@ -155,7 +156,7 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
  if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({role:'user',text:display});
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
  const overview=(await listChats(owner)).filter(c=>c.id!==currentChat.id).map(c=>({title:c.title,recent:c.messages.slice(-4).map(m=>({role:m.role,text:(m.personality||m.text).slice(0,1500)}))}));
- currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,concise:$('concise').checked,settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
+ currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,followupCache:[...currentChat.messages].reverse().find(m=>m.role==='model')?.followupCache??null,concise:$('concise').checked,settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
  await persistChat();await runPending();};
 // ---- attachments (images are shrunk to JPEG <=1600px; PDFs sent as-is; ~2.8 MB total)
 let files=[];
