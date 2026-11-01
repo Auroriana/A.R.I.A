@@ -66,8 +66,10 @@ function parseRoute(answer,truncated){
   if(truncated)throw new Error('cut off');
   const v=jsonOf(answer);
   if(!v||!ROUTES.includes(v.intent)||!Array.isArray(v.queries)||v.queries.length>3)throw new Error('bad');
+  const seen=new Set();
   const queries=['social','vaults'].includes(v.intent)?[]:v.queries.map(q=>typeof q==='string'?{q}:q).filter(q=>q&&typeof q.q==='string'&&q.q.trim()&&q.q.length<=200)
-    .map(q=>({query:q.q.trim(),...(typeof q.vault==='string'&&q.vault.trim()&&q.vault.length<=80?{vault:q.vault.trim()}:{})}));
+    .map(q=>({query:q.q.trim(),...(typeof q.vault==='string'&&q.vault.trim()&&q.vault.length<=80?{vault:q.vault.trim()}:{})}))
+    .filter(q=>{const key=queryKey(q.query)+(q.vault?'@'+q.vault.toLowerCase():'');if(seen.has(key))return false;seen.add(key);return true;});
   if(!['social','vaults'].includes(v.intent)&&!queries.length)throw new Error('no queries');
   return {intent:v.intent,queries,reason:typeof v.reason==='string'?v.reason.slice(0,160):''};
 }

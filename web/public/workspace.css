@@ -71,3 +71,8 @@ input[type=checkbox]:disabled{opacity:.5;cursor:default}
 .move-error{font-size:12px;color:#bbb;margin-top:10px}.move-error:empty{display:none}
 @media(min-width:581px) and (max-width:860px){.notes-workspace{grid-template-columns:min(var(--explorer-width,260px),40vw) 5px minmax(0,1fr)}}
 @media(max-width:580px){.notes-workspace,.notes-workspace.explorer-collapsed{grid-template-columns:minmax(0,1fr)}.explorer-resize{display:none}.notes-workspace.explorer-open .file-explorer{display:flex;visibility:visible;width:min(var(--explorer-width,260px),85vw)}.explorer-tools{padding:8px 5px}}
+
+.usage-details{margin-top:8px;font-size:12px;opacity:.8;max-width:100%}
+.usage-details summary{cursor:pointer}
+.usage-details pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.6}
+.m.model:has(.usage-details)>.token-count{display:none}

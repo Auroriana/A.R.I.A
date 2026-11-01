@@ -122,6 +122,31 @@ test('router sends a lookup straight to the answer with no gap-check call',async
   assert.deepEqual(scope.vaults.map(v=>[v.name,v.state]),[['Lumina Records','search'],['Insurance','skip']]);
 });
 
+test('router removes repeated queries in the same vault but preserves different scopes',async()=>{
+ const searches=[];
+ await researchVault({message:'Find the procedure',route:true,overview:async()=>vaultsMap,
+  search:async(q,o)=>{searches.push({q,vault:o.vault});return [passage(searches.length)];},
+  generate:async(request,meta)=>meta?.phase==='route'?{answer:JSON.stringify({intent:'lookup',queries:[{q:'Payment history',vault:'Insurance'},{q:' payment  HISTORY ',vault:' insurance '},{q:'Payment history',vault:'Lumina Records'}]})}:{answer:'Found [S1] and [S2].'}
+ });
+ assert.deepEqual(searches,[{q:'Payment history',vault:'Insurance'},{q:'Payment history',vault:'Lumina Records'}]);
+});
+
+test('full evidence budget omits old passages without renumbering or accepting omitted citations',async()=>{
+ for(const invalid of [false,true]){
+  let calls=0,searches=0;
+  const run=researchVault({message:'Complex research',search:async()=>Array.from({length:6},(_,i)=>passage(++searches,String(searches),'x'.repeat(3000))),generate:async request=>{
+   if(++calls<=10)return plan(['next '+calls]);
+   const evidence=JSON.parse(request.contents[0].parts[0].text).evidence;
+   assert.equal(evidence.length,66);
+   assert.equal(evidence.filter(s=>s.content).reduce((n,s)=>n+s.content.length,0),RAG_LIMITS.evidenceChars);
+   assert.equal(evidence[0].passageOmitted,true);assert.equal(evidence.at(-1).id,'S66');
+   assert.equal(evidence.at(-1).content.length,3000);
+   return calls===11?plan([]):{answer:invalid?'Omitted [S1].':'Supported [S66].'};
+  }});
+  if(invalid)await assert.rejects(run,/invalid source/);else assert.equal((await run).sources.at(-1).cited,true);
+ }
+});
+
 test('router answers questions about the vaults themselves without any search',async()=>{
   const phases=[];let searches=0;
   const route={answer:JSON.stringify({intent:'vaults',queries:[],reason:'directory question'})};

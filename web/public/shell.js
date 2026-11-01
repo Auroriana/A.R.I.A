@@ -1,6 +1,7 @@
+import {personalityHandoff} from '/personality-handoff.js';
 import {mountCoreSettings} from '/core-settings.js';
 import {addUsage} from '/token-usage.js';
-import {estimateQuestion,usageTitle} from '/token-usage.js';
+import {estimateQuestion,usageTitle,usageDetails} from '/token-usage.js';
 import {renderMarkdown,highlightClaim} from '/note-renderer.js';
 import {mountWorkspace} from '/workspace.js';
 import {mountQuick} from '/quick.js';
@@ -79,6 +80,8 @@ function onProgress(it,ev){
 function showUsage(it,usage){
  if(!usage)return;let n=it.querySelector('.token-count');if(!n){n=el('span');n.className='token-count';it.append(n)}
  n.textContent=String(usage.totalTokenCount);n.title=usageTitle(usage);n.setAttribute('aria-label',n.title);
+ let details=it.querySelector('.usage-details');if(!details){details=el('details');details.className='usage-details';details.append(el('summary'),el('pre'));it.append(details)}
+ details.firstChild.textContent=`Tokens: ${usage.estimated?'~':''}${usage.totalTokenCount.toLocaleString()} total${usage.calls?' · '+usage.calls.length+' model calls':''}`;details.lastChild.textContent=usageDetails(usage);
  $('token-count').textContent=n.textContent;$('token-count').title=n.title;$('token-count').setAttribute('aria-label',n.title);
 }
 function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent=String(estimateQuestion($('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':''),history,files));n.title='Estimated tokens for question, conversation history and attachments. Attachments use a rough allowance of 4096 tokens each.';n.setAttribute('aria-label',n.title);}
@@ -137,7 +140,7 @@ async function runPending(){
   if(personalityOn)setStatus(it,'Preparing Aria’s response…');else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
   const saved={role:'model',text,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
   if(personalityOn){
-    try{const {files,...webContext}=pending.body;saved.webContext={...webContext,action:'rewrite',answer:result.answer,vaultSearches:result.research?.searches||0};const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
+    try{saved.webContext=personalityHandoff(pending.body,result);const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
     await persistChat();
   }
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setStatus(it,'Research paused: '+message);err(message+' Your progress is saved. Use Resume research to continue.');cool();}

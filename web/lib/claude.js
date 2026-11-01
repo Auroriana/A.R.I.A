@@ -6,5 +6,5 @@ export async function claude(model,request,{signal}={},fetcher=fetch){
  const data=await response.json(),answer=(data.content||[]).filter(p=>p.type==='text').map(p=>p.text).join('');
  if(!answer)throw Object.assign(new Error('Claude returned no answer.'),{status:502});
  const u=data.usage,input=(u?.input_tokens||0)+(u?.cache_creation_input_tokens||0)+(u?.cache_read_input_tokens||0);
- return {answer,truncated:data.stop_reason==='max_tokens',usage:u?{promptTokenCount:input,candidatesTokenCount:u.output_tokens,totalTokenCount:input+u.output_tokens}:null};
+ return {answer,truncated:data.stop_reason==='max_tokens',usage:u?{promptTokenCount:input,candidatesTokenCount:u.output_tokens,cachedContentTokenCount:u.cache_read_input_tokens??0,cacheCreationTokenCount:u.cache_creation_input_tokens??0,totalTokenCount:input+u.output_tokens}:null};
 }
