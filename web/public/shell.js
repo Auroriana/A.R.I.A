@@ -30,7 +30,8 @@ async function chat(body,on){
  const eat=l=>{if(!l.trim())return;const e=JSON.parse(l);if(e.type==='error')throw new Error(e.error);if(e.type==='progress')on(e);if(e.type==='result')res=e};
  for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){eat(buf.slice(0,i));buf=buf.slice(i+1)}}
  eat(buf);if(!res)throw new Error('Connection ended before Aria finished.');return res}
-function md(root,text){renderMarkdown(root,text,{citations:true,notes:workspace.notes,onLink:(link)=>{if(link.resolved){tab(true);workspace.open(link.resolved)}}});}
+function setStatus(it,text){const n=it.querySelector('.md');n.textContent=text;n.classList.add('status')}
+function md(root,text){root.classList.remove('status');renderMarkdown(root,text,{citations:true,notes:workspace.notes,onLink:(link)=>{if(link.resolved){tab(true);workspace.open(link.resolved)}}});}
 // ---- messages, references (collapsed), citation highlight
 function msg(role,text){const it=el('article');it.className='m '+role;const w=el('div','YOU');if(role!=='user')w.textContent='ARIA';w.className='who';const b=el('div');b.className='md';if(role==='user')b.textContent=text;else b.textContent=text;it.append(w,b);$('msgs').append(it);$('welcome').hidden=true;$('scroll').scrollTop=1e9;return it}
 function refs(it,src){if(!src.length)return;const d=el('details');d.className='refs';d.append(el('summary','References ('+src.length+')'));
@@ -73,7 +74,7 @@ function onProgress(it,ev){
  else if(ev.stage==='scope')scope(ev);
  else if(ev.stage==='searching'){$('cur').textContent='⌕ '+ev.vault;slog.append(el('div',(slog.children.length+1)+'. '+ev.vault+' · '+ev.sent))}
  else if(ev.stage==='results'){if(slog.lastChild)slog.lastChild.textContent+=' → '+ev.notes.length+(ev.notes.length===1?' passage':' passages');for(const n of ev.notes)file(n)}
- else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'){it.querySelector('.md').textContent=ev.message;if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
+ else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'){setStatus(it,ev.message);if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
  else if(ev.stage==='thought-summary'){let t=it.querySelector('.th');if(!t){t=el('details');t.className='th';t.append(el('summary','Thinking'),el('div'));it.querySelector('.who').after(t)}t.lastChild.append(ev.text)}}
 function showUsage(it,usage){
  if(!usage)return;let n=it.querySelector('.token-count');if(!n){n=el('span');n.className='token-count';it.append(n)}
@@ -122,7 +123,7 @@ function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp'
 $('pause-chat').onclick=()=>chatController?.abort();
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
- const pending=currentChat.pending,it=msg('model',pending.continuation?'Continuing research…':'Thinking…');first=true;
+ const pending=currentChat.pending,it=msg('model','');setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
  const settings=pending.body.settings,personalityOn=settings?.enabled;let ackResult=null;
  const ack=personalityOn&&!pending.continuation?personalityCall({...pending.body,action:'ack'},chatController.signal).then(d=>{ackResult=d;const n=el('div',d.answer);n.className='ack';it.querySelector('.who').after(n);return d}).catch(()=>null):Promise.resolve(null);
  showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(pending.body.message,pending.body.history,pending.body.files),estimated:true});
@@ -130,18 +131,18 @@ async function runPending(){
   let result;
   for(;;){result=await chat({...pending.body,resumable:true,...(pending.continuation?{continuation:pending.continuation}:{})},ev=>{if(ev.stage==='usage')pending.usage=ev.usage;onProgress(it,ev)});
     if(result.usage){pending.usage=result.usage;showUsage(it,result.usage);}
-    if(!result.continuation)break;pending.continuation=result.continuation;await persistChat();it.querySelector('.md').textContent='Researching · '+result.research.searches+' searches';
+    if(!result.continuation)break;pending.continuation=result.continuation;await persistChat();setStatus(it,'Researching · '+result.research.searches+' searches');
   }
   const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
   const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
-  if(personalityOn)it.querySelector('.md').textContent='Preparing Aria’s response…';else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
+  if(personalityOn)setStatus(it,'Preparing Aria’s response…');else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
   const saved={role:'model',text,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
   if(personalityOn){
     await ack;if(ackResult){saved.ack=ackResult.answer;saved.usage=addUsage(saved.usage,ackResult.usage);showUsage(it,saved.usage)}
     try{const {files,...webContext}=pending.body;saved.webContext={...webContext,action:'rewrite',answer:result.answer,ack:ackResult?.answer,vaultSearches:result.research?.searches||0};const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
     await persistChat();
   }
- }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;it.querySelector('.md').textContent='Research paused: '+message;err(message+' Your progress is saved. Use Resume research to continue.');cool();}
+ }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setStatus(it,'Research paused: '+message);err(message+' Your progress is saved. Use Resume research to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
 }
 $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('login').showModal();return;}

@@ -7,5 +7,6 @@
 #core-settings input[type=checkbox]{display:inline-grid;width:16px;height:16px;padding:0;margin-right:8px}.settings-help{color:#aaa;font-size:12px;line-height:1.6}
 .core-prompts details{border-top:1px solid #333;padding:12px 0}.core-prompts textarea{width:100%;margin-top:12px;padding:10px;resize:vertical;line-height:1.5}
 .personality-toggle{margin-top:12px;font-size:12px}.ack{color:#aaa;font-size:13px;margin-bottom:12px}
+.md.status{text-transform:uppercase;font-size:11px;letter-spacing:.3em;color:#777;white-space:normal}
 .cite-warn{color:#f07575;margin-left:10px;font-size:13px;cursor:help}
 @media(max-width:600px){.core-models{grid-template-columns:1fr}#core-settings{padding:16px}}
