@@ -17,7 +17,8 @@ Use the "vaults" map to decide where the information most likely lives. Target t
 export const CONCISE_INSTRUCTION = '\nKeep the answer concise: lead with the answer, use a short paragraph or a few bullets, and omit repetition and background. Still cover each requested task, necessary caveats, and citations. Aim for about 150 words unless essential details require more.';
 
 // ---- Cheap routing: one small-model call decides intent, vault and clean keywords before any search.
-export const ROUTER_SYSTEM = `You route one operator message for Aria, a notes assistant. Output only JSON: {"intent":"vaults"|"lookup"|"case","queries":[{"q":"keywords","vault":"exact vault name or null"}],"reason":"max 120 chars"}.
+export const ROUTER_SYSTEM = `You route one operator message for Aria, a notes assistant. Output only JSON: {"intent":"social"|"vaults"|"lookup"|"case","queries":[{"q":"keywords","vault":"exact vault name or null"}],"reason":"max 120 chars"}.
+"social": greetings, small talk or conversation requiring no note evidence; queries must be []. A greeting plus a factual request is not social.
 "vaults": about the vaults themselves (what exists, where something lives); queries must be [].
 "lookup": a direct question about facts in the notes (a person, date, record, definition).
 "case": a multi-step work/customer case needing procedures, prerequisites or verification.
@@ -60,14 +61,14 @@ function parseQueries(answer,seen) {
   const discrepancies=Array.isArray(value.discrepancies)?value.discrepancies.filter(d=>typeof d==='string'&&d.trim()&&d.length<=300).slice(0,5).map(d=>d.trim()):[];
   return {queries,discrepancies};
 }
-const ROUTES=['vaults','lookup','case'];
+const ROUTES=['social','vaults','lookup','case'];
 function parseRoute(answer,truncated){
   if(truncated)throw new Error('cut off');
   const v=jsonOf(answer);
   if(!v||!ROUTES.includes(v.intent)||!Array.isArray(v.queries)||v.queries.length>3)throw new Error('bad');
-  const queries=v.intent==='vaults'?[]:v.queries.map(q=>typeof q==='string'?{q}:q).filter(q=>q&&typeof q.q==='string'&&q.q.trim()&&q.q.length<=200)
+  const queries=['social','vaults'].includes(v.intent)?[]:v.queries.map(q=>typeof q==='string'?{q}:q).filter(q=>q&&typeof q.q==='string'&&q.q.trim()&&q.q.length<=200)
     .map(q=>({query:q.q.trim(),...(typeof q.vault==='string'&&q.vault.trim()&&q.vault.length<=80?{vault:q.vault.trim()}:{})}));
-  if(v.intent!=='vaults'&&!queries.length)throw new Error('no queries');
+  if(!['social','vaults'].includes(v.intent)&&!queries.length)throw new Error('no queries');
   return {intent:v.intent,queries,reason:typeof v.reason==='string'?v.reason.slice(0,160):''};
 }
 
@@ -131,6 +132,10 @@ export async function researchStep({state,message,search,generate,concise=false,
     return {state};
   }
   onProgress({stage:'answering',message:'Connecting the evidence and preparing your answer.'});
+  if(state.intent==='social'){
+    const result=await generate({systemInstruction:{parts:[{text:'Respond naturally to the user’s conversational message. No vault research is needed. Do not add missing-evidence disclaimers or folder suggestions.'+(concise?CONCISE_INSTRUCTION:'')}]},contents:[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message},...files]}],generationConfig:{maxOutputTokens:2048}},{phase:'social'});
+    return {result:{...result,sources:[],research:{searches:0,planningCalls:state.planningCalls,warnings:state.warnings}}};
+  }
   const lookup=['lookup','vaults'].includes(state.intent);
   const finish=lookup?' Research is complete. If evidence is empty, say so. Never cite a catalog entry whose passage is omitted.':' Research is complete. Check suggested discrepancies against the operator message. Disclose material gaps, uncertainty and incomplete research. If evidence is empty, say so. Never cite a catalog entry whose passage is omitted.';
   const result=await generate(request((lookup?LOOKUP_SYSTEM:VAULT_SYSTEM)+(concise?CONCISE_INSTRUCTION:'')+finish,4096));
