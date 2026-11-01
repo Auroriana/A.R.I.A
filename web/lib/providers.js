@@ -22,7 +22,7 @@ export async function gemini(model,body,fetcher=fetch) {
 }
 // Google returns public thought summaries as text parts with thought:true.
 // Signatures and planner JSON are never forwarded to the UI.
-export async function geminiStream(model,body,{onThought=()=>{},onAnswerStarted=()=>{},signal,idleMs=120000,totalMs=270000}={},fetcher=fetch) {
+export async function geminiStream(model,body,{onThought=()=>{},onAnswerStarted=()=>{},onUsage=()=>{},onTokenText=()=>{},signal,idleMs=120000,totalMs=270000}={},fetcher=fetch) {
   const controller=new AbortController();let idleTimer,totalTimer,reader,received=false;
   const resetIdle=()=>{clearTimeout(idleTimer);idleTimer=setTimeout(()=>controller.abort('idle'),idleMs);};
   const combined=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
@@ -32,11 +32,12 @@ export async function geminiStream(model,body,{onThought=()=>{},onAnswerStarted=
     if(!payload||payload==='[DONE]')return;
     let data;try{data=JSON.parse(payload);}catch{throw Object.assign(new Error('Gemini returned an unreadable stream. Please try again.'),{status:502});}
     if(data.error)throw Object.assign(new Error('Gemini interrupted generation with an upstream error. Please try again.'),{status:502});
-    if(data.usageMetadata)usage=data.usageMetadata;
+    if(data.usageMetadata){usage=data.usageMetadata;onUsage(usage);}
     const candidate=data.candidates?.find(c=>c.index===undefined||c.index===0);
     if(candidate?.finishReason)finishReason=candidate.finishReason;
     for(const part of candidate?.content?.parts??[]){
       if(typeof part.text!=='string'||!part.text)continue;
+      onTokenText(part.text);
       if(part.thought===true)onThought(part.text);
       else {answer+=part.text;if(!answerStarted){answerStarted=true;onAnswerStarted();}}
     }

@@ -1,3 +1,4 @@
+import {estimateText,normalizeUsage,addUsage} from '../public/token-usage.js';
 import {models,validateChat} from '../lib/models.js';
 import {noteRoutes} from '../lib/notes-api.js';
 import {gemini,geminiStream,embed} from '../lib/providers.js';
@@ -103,7 +104,7 @@ export default async function handler(req,res){
       heartbeat=setInterval(()=>emit('heartbeat',{}),10000);
     }
     if(streaming){deadlineTimer=setTimeout(()=>generationController.abort('deadline'),270000);res.on?.('close',disconnect);}
-    let generationId=0;
+    let generationId=0,tokenUsage=null;
     const onProgress=event=>{if(streaming)emit('progress',event);};
     const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
     const generate=async (request,{phase='answer',round}={})=>{
@@ -113,16 +114,22 @@ export default async function handler(req,res){
       // Base64 bytes aren't text tokens. Reserve a conservative per-attachment allowance.
       const textRequest=JSON.stringify(request, (key,value)=>key==='inlineData'?{mimeType:value.mimeType}:value);
       await reserve(use,Buffer.byteLength(textRequest)+files.length*4096+request.generationConfig.maxOutputTokens);
-      if(!streaming)return gemini(use,request);
+      const inputEstimate=estimateText(textRequest)+files.length*4096;let outputText='',liveUsage=null;
+      const report=()=>onProgress({stage:'usage',usage:addUsage(tokenUsage,normalizeUsage(liveUsage,inputEstimate+estimateText(outputText)))});
+      report();
+      if(!streaming){const result=await gemini(use,request);tokenUsage=addUsage(tokenUsage,normalizeUsage(result.usage,inputEstimate+estimateText(result.answer)));return result;}
       if(generationController.signal.aborted)throw fail('The overall response time limit was reached or the chat connection closed.',504);
       const callId=++generationId;let hasSummary=false;
       onProgress({stage:'thought-start',callId,phase,round,model:use});
       const result=await geminiStream(use,request,{
         signal:generationController.signal,
+        onUsage:usage=>{liveUsage=usage;report();},
+        onTokenText:text=>{outputText+=text;if(!liveUsage)report();},
         onThought:text=>{hasSummary=true;onProgress({stage:'thought-summary',callId,text});},
         onAnswerStarted:()=>onProgress({stage:'model-output',message:phase==='planning'||phase==='route'?'Gemini is preparing its search requests.':'Gemini is writing the answer; checking citations before displaying it.'})
       });
-      onProgress({stage:'thought-end',callId,hasSummary});return result;
+      tokenUsage=addUsage(tokenUsage,normalizeUsage(result.usage,inputEstimate+estimateText(outputText)));
+      onProgress({stage:'usage',usage:tokenUsage});onProgress({stage:'thought-end',callId,hasSummary});return result;
     };
     if(mode==='vault'){
       let vaultRows;
@@ -143,21 +150,23 @@ export default async function handler(req,res){
       // Old assistant answers and deleted evidence never become fresh vault evidence.
       if(incoming.resumable===true){
         const hash=requestHash(validated),state=incoming.continuation?openCheckpoint(incoming.continuation,user.id,hash):createResearchState();
+        tokenUsage=state.tokenUsage??null;
         // Run several steps per HTTP request (saves round trips); checkpoint only if the time budget runs out.
         const started=Date.now();
         let next=await researchStep({...options,state});
         while(!next.result&&Date.now()-started<120000)next=await researchStep({...options,state:next.state});
-        if(next.result)return send(200,{...next.result,model});
-        return send(200,{continuation:sealCheckpoint(next.state,user.id,hash),research:{searches:next.state.searches.length,planningCalls:next.state.planningCalls},model});
+        if(next.result)return send(200,{...next.result,usage:tokenUsage,model});
+        next.state.tokenUsage=tokenUsage;
+        return send(200,{continuation:sealCheckpoint(next.state,user.id,hash),usage:tokenUsage,research:{searches:next.state.searches.length,planningCalls:next.state.planningCalls},model});
       }
-      return send(200,{...await researchVault(options),model});
+      const result=await researchVault(options);return send(200,{...result,usage:tokenUsage,model});
     }
     const system='You are Aria, a thoughtful personal research assistant. This is general chat; you have not searched the user’s vault. Be clear about uncertainty.'+(concise?CONCISE_INSTRUCTION:'');
     const contents=[...history.map(m=>({role:m.role,parts:[{text:m.text}]})),{role:'user',parts:[{text:message},...files]}];
     const request={systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:2048}};
     onProgress({stage:'answering',message:'Preparing your answer.'});
     const result=await generate(request);
-    send(200,{...result,model,sources:[]});
+    send(200,{...result,usage:tokenUsage,model,sources:[]});
   }catch(error){send(error.status??500,{error:error.status?error.message:['TimeoutError','AbortError'].includes(error.name)?'The upstream request timed out. Please try again.':error instanceof TypeError?'Could not connect to an upstream service. Check server connectivity and configuration.':'Request could not be completed. Check configuration or try again later.'});}
   finally{clearInterval(heartbeat);clearTimeout(deadlineTimer);res.off?.('close',disconnect);}
 }

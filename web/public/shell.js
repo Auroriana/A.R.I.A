@@ -1,3 +1,4 @@
+import {estimateQuestion,usageTitle} from '/token-usage.js';
 import {renderMarkdown,highlightClaim} from '/note-renderer.js';
 import {mountWorkspace} from '/workspace.js';
 import {mountQuick} from '/quick.js';
@@ -54,15 +55,23 @@ function markUsed(src){
 const cool=()=>trail.querySelectorAll('.hot').forEach(n=>n.classList.remove('hot'));
 function lit(v,path){nodes.forEach(n=>n.classList.remove('lit','hot'));const n=nodes.get(key(v,path));if(n){n.classList.add('lit');n.scrollIntoView({block:'nearest',behavior:'smooth'})}}
 function onProgress(it,ev){
+ if(ev.stage==='usage'){showUsage(it,ev.usage);return;}
  if(ev.stage==='search'){cool()}
  else if(ev.stage==='scope')scope(ev);
  else if(ev.stage==='searching'){$('cur').textContent='⌕ '+ev.vault;slog.append(el('div',(slog.children.length+1)+'. '+ev.vault+' · '+ev.sent))}
  else if(ev.stage==='results'){if(slog.lastChild)slog.lastChild.textContent+=' → '+ev.notes.length+(ev.notes.length===1?' passage':' passages');for(const n of ev.notes)file(n)}
  else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'){it.querySelector('.md').textContent=ev.message;if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
  else if(ev.stage==='thought-summary'){let t=it.querySelector('.th');if(!t){t=el('details');t.className='th';t.append(el('summary','Thinking'),el('div'));it.querySelector('.who').after(t)}t.lastChild.append(ev.text)}}
+function showUsage(it,usage){
+ if(!usage)return;let n=it.querySelector('.token-count');if(!n){n=el('span');n.className='token-count';it.append(n)}
+ n.textContent=String(usage.totalTokenCount);n.title=usageTitle(usage);n.setAttribute('aria-label',n.title);
+ $('token-count').textContent=n.textContent;$('token-count').title=n.title;$('token-count').setAttribute('aria-label',n.title);
+}
+function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent=String(estimateQuestion($('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':''),history,files));n.title='Estimated tokens for question, conversation history and attachments. Attachments use a rough allowance of 4096 tokens each.';n.setAttribute('aria-label',n.title);}
+$('q').addEventListener('input',estimateDraft);
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
-function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent=''}
+function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';estimateDraft()}
 const GEM='<svg viewBox="0 0 24 24"><path d="M12 2c.5 5.5 4.5 9.5 10 10-5.5.5-9.5 4.5-10 10-.5-5.5-4.5-9.5-10-10 5.5-.5 9.5-4.5 10-10z"/></svg>',DS='<svg viewBox="0 0 24 24"><path d="M2 14c0-4 4-8 10-8 4 0 7 2 8 5l2-2-.5 6c-1 3-5 5-10 5-5 0-9.5-2-9.5-6z"/><circle cx="9" cy="12" r=".8"/></svg>';
 function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.className='pg';g.innerHTML=GEM+'GEMINI';p.append(g);
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
@@ -90,8 +99,8 @@ async function openChat(id){if(busy)return;const c=(await listChats(owner)).find
 async function removeChat(id){if(busy||!await confirmAction('Delete this conversation? It is only stored in this browser.','Delete'))return;await deleteChat(owner,id);if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
 async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
 function displayChat(c){reset();currentChat=c;$('mode').value=c.mode||'general';$('mc').classList.toggle('on',c.mode!=='vault');$('mv').classList.toggle('on',c.mode==='vault');$('vault').hidden=c.mode!=='vault';$('vault').value=c.vault||'all';if(cfg.models.some(m=>m.id===c.model))$('model').value=c.model;buildModels();upd();
- for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);}}
- history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume research';
+ for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);}}
+ history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume research';estimateDraft();
 }
 async function restoreChats(){try{const chats=await listChats(owner);if(chats[0])displayChat(chats[0]);await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
 $('new-chat').onclick=()=>{if(busy)return;reset();currentChat=null;$('resume-chat').hidden=true;refreshHistory();closeHist();$('q').focus()};
@@ -101,15 +110,17 @@ $('pause-chat').onclick=()=>chatController?.abort();
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
  const pending=currentChat.pending,it=msg('model',pending.continuation?'Continuing research…':'Thinking…');first=true;
+ showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(pending.body.message,pending.body.history,pending.body.files),estimated:true});
  try{
   let result;
-  for(;;){result=await chat({...pending.body,resumable:true,...(pending.continuation?{continuation:pending.continuation}:{})},ev=>onProgress(it,ev));
+  for(;;){result=await chat({...pending.body,resumable:true,...(pending.continuation?{continuation:pending.continuation}:{})},ev=>{if(ev.stage==='usage')pending.usage=ev.usage;onProgress(it,ev)});
+    if(result.usage){pending.usage=result.usage;showUsage(it,result.usage);}
     if(!result.continuation)break;pending.continuation=result.continuation;await persistChat();it.querySelector('.md').textContent='Researching · '+result.research.searches+' searches';
   }
   const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
   const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
   md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
-  currentChat.messages.push({role:'model',text,sources:shown});currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
+  currentChat.messages.push({role:'model',text,sources:shown,usage:result.usage});currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;it.querySelector('.md').textContent='Research paused: '+message;err(message+' Your progress is saved. Use Resume research to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
 }
@@ -127,7 +138,7 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
 let files=[];
 const b64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=no;r.readAsDataURL(blob)});
 async function shrink(f){const bmp=await createImageBitmap(f),k=Math.min(1,1600/Math.max(bmp.width,bmp.height)),c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(bmp,0,0,c.width,c.height);return new Promise(ok=>c.toBlob(ok,'image/jpeg',.85))}
-function renderAtt(){const a=$('att');a.replaceChildren();files.forEach((f,i)=>{const d=el('span');d.className='at';if(f.mime!=='application/pdf'){const im=el('img');im.src='data:'+f.mime+';base64,'+f.data;im.alt='';d.append(im)}d.append(el('span',f.name));const x=el('button','×');x.type='button';x.setAttribute('aria-label','Remove');x.onclick=()=>{files.splice(i,1);renderAtt()};d.append(x);a.append(d)})}
+function renderAtt(){const a=$('att');a.replaceChildren();files.forEach((f,i)=>{const d=el('span');d.className='at';if(f.mime!=='application/pdf'){const im=el('img');im.src='data:'+f.mime+';base64,'+f.data;im.alt='';d.append(im)}d.append(el('span',f.name));const x=el('button','×');x.type='button';x.setAttribute('aria-label','Remove');x.onclick=()=>{files.splice(i,1);renderAtt()};d.append(x);a.append(d)});estimateDraft()}
 async function addFiles(list){for(const f of list){if(files.length>=4){err('Up to 4 attachments.');break}
  try{let mime=f.type,blob=f;if(mime.startsWith('image/')){if(!['image/png','image/jpeg','image/webp'].includes(mime)||f.size>2_800_000){blob=await shrink(f);mime='image/jpeg'}}else if(mime!=='application/pdf'){err('Only images and PDFs are supported.');continue}
   const data=await b64(blob);if(files.reduce((n,x)=>n+x.data.length,0)+data.length>3.9e6){err('Attachments are too large (about 2.8 MB total).');continue}
@@ -149,6 +160,7 @@ try{$('concise').checked=localStorage.getItem('aria.concise')==='true';}catch{}
 $('concise').onchange=()=>{try{localStorage.setItem('aria.concise',String($('concise').checked));}catch{}};
 const app=$('app');try{const s=localStorage.getItem('aria.history.collapsed');if(s===null?matchMedia('(max-width:860px)').matches:s==='true')app.classList.add('hc')}catch{}
 $('ht').onclick=()=>{const c=app.classList.toggle('hc');try{localStorage.setItem('aria.history.collapsed',String(c))}catch{}};
+estimateDraft();
 const h=new Date().getHours();$('gr').textContent=h>=5&&h<12?'Good morning.':h>=12&&h<18?'Good afternoon.':'Good evening.';
 try{cfg=await api('status');$('model').value=cfg.models[0].id;buildModels();upd();
  if(!cfg.configured||!cfg.geminiReady){$('setup').hidden=false;$('setup').textContent='Preview mode: finish Supabase and Gemini setup to enable answers.'}
