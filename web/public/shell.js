@@ -113,7 +113,7 @@ async function openChat(id){if(busy)return;const c=(await listChats(owner)).find
 async function removeChat(id){if(busy||!await confirmAction('Delete this browser conversation? Its History vault archive remains available.','Delete'))return;await deleteChat(owner,id);if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
 async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);archive(currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
 function displayChat(c){reset();currentChat=c;$('mode').value=c.mode||'general';$('mc').classList.toggle('on',c.mode!=='vault');$('mv').classList.toggle('on',c.mode==='vault');$('vault').hidden=c.mode!=='vault';$('vault').value=c.vault||'all';if(cfg.models.some(m=>m.id===c.model))$('model').value=c.model;buildModels();upd();
- for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);if(m.ack){const ack=el('div',m.ack);ack.className='ack';it.querySelector('.who').after(ack)}personalityToggle(it,m);webPanel(it,m);}}
+ for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);personalityToggle(it,m);webPanel(it,m);}}
  history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume research';estimateDraft();
 }
 async function restoreChats(){try{const chats=await listChats(owner);for(const c of [...chats].reverse())archive(c);if(chats[0])displayChat(chats[0]);await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
@@ -124,8 +124,7 @@ $('pause-chat').onclick=()=>chatController?.abort();
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
  const pending=currentChat.pending,it=msg('model','');setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
- const settings=pending.body.settings,personalityOn=settings?.enabled;let ackResult=null;
- const ack=personalityOn&&!pending.continuation?personalityCall({...pending.body,action:'ack'},chatController.signal).then(d=>{ackResult=d;const n=el('div',d.answer);n.className='ack';it.querySelector('.who').after(n);return d}).catch(()=>null):Promise.resolve(null);
+ const settings=pending.body.settings,personalityOn=settings?.enabled;
  showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(pending.body.message,pending.body.history,pending.body.files),estimated:true});
  try{
   let result;
@@ -138,8 +137,7 @@ async function runPending(){
   if(personalityOn)setStatus(it,'Preparing Aria’s response…');else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
   const saved={role:'model',text,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
   if(personalityOn){
-    await ack;if(ackResult){saved.ack=ackResult.answer;saved.usage=addUsage(saved.usage,ackResult.usage);showUsage(it,saved.usage)}
-    try{const {files,...webContext}=pending.body;saved.webContext={...webContext,action:'rewrite',answer:result.answer,ack:ackResult?.answer,vaultSearches:result.research?.searches||0};const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
+    try{const {files,...webContext}=pending.body;saved.webContext={...webContext,action:'rewrite',answer:result.answer,vaultSearches:result.research?.searches||0};const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
     await persistChat();
   }
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setStatus(it,'Research paused: '+message);err(message+' Your progress is saved. Use Resume research to continue.');cool();}
