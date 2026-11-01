@@ -1,6 +1,6 @@
 # A.R.I.A.
 
-**Ataraxia Retrieval & Intelligence Assistant**
+**Ataraxia: Retrieval & Indexing Augmentation**
 
 A personal knowledge and research assistant that turns Markdown notes into searchable, cited answers—with a workspace for reading, editing, organizing, and capturing information.
 
