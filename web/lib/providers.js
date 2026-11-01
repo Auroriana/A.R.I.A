@@ -18,7 +18,7 @@ export async function gemini(model,body,fetcher=fetch) {
   const candidate=data.candidates?.[0];
   const answer=candidate?.content?.parts?.filter(p=>!p.thought).map(p=>p.text??'').join('');
   if(!answer) throw Object.assign(new Error('Gemini returned no answer. It may have blocked the request or exhausted its output budget.'),{status:502});
-  return {answer,usage:data.usageMetadata??null,truncated:candidate.finishReason==='MAX_TOKENS'};
+  return {answer,grounding:candidate.groundingMetadata??null,usage:data.usageMetadata??null,truncated:candidate.finishReason==='MAX_TOKENS'};
 }
 // Google returns public thought summaries as text parts with thought:true.
 // Signatures and planner JSON are never forwarded to the UI.
