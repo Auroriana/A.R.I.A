@@ -15,7 +15,7 @@ export function quickRequest(job, vaults) {
   const request = baseQuickRequest(job, vaults);
   // Personality is a snapshot saved with the job. It styles only the "body" text; style never changes facts, vault, folder, title or confidence.
   const voice = typeof job.personality === 'string' ? job.personality.trim().slice(0, 16000) : '';
-  if (voice) request.systemInstruction.parts[0].text += '\nVoice: write the "body" field as Aria\'s own understanding of the note, in the voice described below. Every fact, name, date, number and instruction must stay exactly accurate and complete; voice never changes content, vault, folder, title or confidence. Voice instructions: ' + voice;
+  if (voice) request.systemInstruction.parts[0].text += '\nVoice: write the "body" field as Capri\'s own understanding of the note, in the voice described below. Every fact, name, date, number and instruction must stay exactly accurate and complete; voice never changes content, vault, folder, title or confidence. Voice instructions: ' + voice;
   return request;
 }
 function baseQuickRequest(job, vaults) {

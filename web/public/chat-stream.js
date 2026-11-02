@@ -13,6 +13,6 @@ export async function readChatStream(response,onProgress){
   try{
     while(true){const {done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let index;while((index=buffer.indexOf('\n'))>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);}}
     buffer+=decoder.decode();consume(buffer);
-    if(!result)throw new Error('The connection ended before Aria finished. Please try again.');return result;
+    if(!result)throw new Error('The connection ended before Capri finished. Please try again.');return result;
   }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }

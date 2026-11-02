@@ -19,7 +19,7 @@ export function mountQuick(root,{api,open,move,confirm:confirmBox,voice=()=>null
   function renderOutbox(){
     const box=$('quick-outbox');box.replaceChildren();if(!account)return;
     let items;try{items=read();}catch(e){tell(e.message);return;}if(!items.length)return;
-    box.append(element('p',`${items.length} note${items.length===1?'':'s'} saved on this browser, waiting for server confirmation. Reopen Aria here to resend.`));
+    box.append(element('p',`${items.length} note${items.length===1?'':'s'} saved on this browser, waiting for server confirmation. Reopen Capri here to resend.`));
     for(const item of items){const d=element('details');d.append(element('summary',item.text.slice(0,80)),element('pre',item.text));box.append(d);}
     const retry=element('button','Resend now');retry.onclick=()=>flush();box.append(retry);
   }
@@ -76,7 +76,7 @@ export function mountQuick(root,{api,open,move,confirm:confirmBox,voice=()=>null
         if(ticket!==epoch)break;
         await locked(()=>{if(ticket===epoch)write(read().filter(x=>x.key!==item.key));});
         if(ticket!==epoch)break;
-        tell('Saved to the server. You can close Aria; background filing continues once the worker is configured.');
+        tell('Saved to the server. You can close Capri; background filing continues once the worker is configured.');
       }
       if(ticket===epoch){renderOutbox();await refresh();if(uploaded||rows.some(n=>n.status==='queued'&&Date.parse(n.next_attempt_at)<=Date.now()))kick();}
     }catch(e){if(ticket===epoch){tell(e.message+' Your unsent text is kept in this browser.');renderOutbox();}}

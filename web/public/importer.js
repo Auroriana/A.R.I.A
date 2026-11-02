@@ -1,7 +1,7 @@
 // Lossless "paste -> searchable notes" formatter. Pure functions: no DOM, no network, no AI.
 //
 // THE RULE: your pasted text is never edited. It is only cut at line starts that already exist, and the
-// pieces are kept in order, character for character. Aria ADDS exactly two things, both outside your text:
+// pieces are kept in order, character for character. Capri ADDS exactly two things, both outside your text:
 //   1. a small frontmatter header at the top of each saved note, and
 //   2. a "## label" line between two of your lines (never inside a line or a ``` code block).
 // verifyPlan() proves it: dropping every added piece gives back the original, exactly.
@@ -32,7 +32,7 @@ export async function sha256Hex(text) {
 export function checkText(text) {
   if (typeof text !== 'string' || !text.trim()) return 'Paste some text first.';
   if (text.includes('\u0000')) return 'The text contains NUL (zero) characters, which cannot be stored. Nothing was changed.';
-  if (text.includes('\r')) return 'The text contains carriage-return characters (\\r). Aria stores line breaks as \\n only and will not rewrite your text, so nothing was changed.';
+  if (text.includes('\r')) return 'The text contains carriage-return characters (\\r). Capri stores line breaks as \\n only and will not rewrite your text, so nothing was changed.';
   if (typeof text.isWellFormed === 'function' && !text.isWellFormed()) return 'The text contains a broken Unicode character (a lone surrogate) that cannot be stored. Nothing was changed.';
   const bytes = enc.encode(text).length;
   if (bytes > LIMITS.maxBytes) return `That is ${num(bytes)} bytes; the limit per import is ${num(LIMITS.maxBytes)}. Import it in several pastes.`;
@@ -153,7 +153,7 @@ export async function planImport(text, { title = '', folder = '00 Inbox', ai = t
     u.bytes = jsonBytes(u.body) + jsonBytes(u.labelText) + 4;
     u.chunks = 1 + Math.floor(u.body.length / 1250);   // upper bound on chunks the search indexer makes from this unit
     if (u.chars > LIMITS.partChars - FM_RESERVE || u.bytes > LIMITS.partJsonBytes - FM_RESERVE)
-      throw new Error(`Lines ${num(u.from + 1)}–${num(u.to)} are one unbroken block of ${num(u.body.length)} characters, too big for a single note. Aria never cuts inside a line or a code block because that would change your text. Split that block yourself before pasting.`);
+      throw new Error(`Lines ${num(u.from + 1)}–${num(u.to)} are one unbroken block of ${num(u.body.length)} characters, too big for a single note. Capri never cuts inside a line or a code block because that would change your text. Split that block yourself before pasting.`);
   }
 
   const groups = [];

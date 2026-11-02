@@ -60,7 +60,7 @@ $('paste').onpaste=e=>{
   if(!input.value||input.selectionStart===0&&input.selectionEnd===input.value.length){e.preventDefault();input.value=rich.text;importedLayout=rich.layout;plan=null;refresh();}
 };
 $('format-import').onclick=async()=>{
-  const text=$('paste').value;setBusy(true);status('Aria is suggesting a layout. The text will stay unchanged.');
+  const text=$('paste').value;setBusy(true);status('Capri is suggesting a layout. The text will stay unchanged.');
   try{const {models}=await api('status');const r=await api('note-format',{content:text,model:models[0].id});if($('paste').value!==text)throw new Error('The text changed while formatting. Try again.');importedLayout={...r.layout,spans:importedLayout?.spans??[]};plan=null;status('Layout ready. Preview to review it before importing.');}catch(e){status(e.message,true);}finally{setBusy(false);}
 };
 $('preview').onclick = async () => {
