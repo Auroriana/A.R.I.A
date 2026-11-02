@@ -21,7 +21,7 @@ function webPanel(it,m){
 }
 async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const d=await r.json();if(!r.ok)throw new Error(d.error||'Personality unavailable.');return d;}
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
-const quick=mountQuick($('quick'),{api,confirm:confirmAction,move:(path,vault,version)=>workspace.move(path,vault,version),open:async(path,vault)=>{tab(true);await workspace.open(path,vault);}});
+const quick=mountQuick($('quick'),{api,confirm:confirmAction,voice:()=>{const s=core.get();return s?.enabled?s.prompts.personality:null;},move:(path,vault,version)=>workspace.move(path,vault,version),open:async(path,vault)=>{tab(true);await workspace.open(path,vault);}});
 async function api(p,b){const r=await fetch('/api/'+p,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
 async function chat(body,on){
  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal:chatController?.signal});
@@ -76,7 +76,7 @@ function onProgress(it,ev){
  else if(ev.stage==='scope')scope(ev);
  else if(ev.stage==='searching'){$('cur').textContent='⌕ '+ev.vault;slog.append(el('div',(slog.children.length+1)+'. '+ev.vault+' · '+ev.sent))}
  else if(ev.stage==='results'){if(slog.lastChild)slog.lastChild.textContent+=' → '+ev.notes.length+(ev.notes.length===1?' passage':' passages');for(const n of ev.notes)file(n)}
- else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'){setStatus(it,ev.message);if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
+ else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'||ev.stage==='verifying'){setStatus(it,ev.message);if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
  else if(ev.stage==='thought-summary'){let t=it.querySelector('.th');if(!t){t=el('details');t.className='th';t.append(el('summary','Thinking'),el('div'));it.querySelector('.who').after(t)}t.lastChild.append(ev.text)}}
 function showUsage(it,usage){
  if(!usage)return;let n=it.querySelector('.token-count');if(!n){n=el('span');n.className='token-count';it.append(n)}
@@ -137,7 +137,7 @@ async function runPending(){
     if(!result.continuation)break;pending.continuation=result.continuation;await persistChat();setStatus(it,'Researching · '+result.research.searches+' searches');
   }
   const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
-  const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
+  const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(r.verifyRounds?' · verified '+r.verifyRounds+'×':'')+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
   if(personalityOn)setStatus(it,'Preparing Aria’s response…');else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
   const saved={role:'model',text,reasoningText:result.answer,followupCache:result.followupCache??null,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
   if(personalityOn){
@@ -156,7 +156,7 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
  if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({role:'user',text:display});
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
  const overview=(await listChats(owner)).filter(c=>c.id!==currentChat.id).map(c=>({title:c.title,recent:c.messages.slice(-4).map(m=>({role:m.role,text:(m.personality||m.text).slice(0,1500)}))}));
- currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,followupCache:[...currentChat.messages].reverse().find(m=>m.role==='model')?.followupCache??null,concise:$('concise').checked,settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
+ currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,followupCache:[...currentChat.messages].reverse().find(m=>m.role==='model')?.followupCache??null,concise:$('concise').checked,depth:$('concise').checked?'age':'mir',settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
  await persistChat();await runPending();};
 // ---- attachments (images are shrunk to JPEG <=1600px; PDFs sent as-is; ~2.8 MB total)
 let files=[];
@@ -180,8 +180,8 @@ function confirmAction(label,okText='Confirm'){return new Promise(ok=>{const d=$
 // ---- app views; note drafts are kept independently of chat navigation.
 function tab(n){const q=n==='quick',notes=n===true,other=q||notes;$('ht').hidden=other;$('chat').hidden=other;$('notes').hidden=!notes;$('quick').hidden=!q;$('app').classList.toggle('nm',other);$('tc').classList.toggle('on',!other);$('tn').classList.toggle('on',notes);$('tq').classList.toggle('on',q);location.hash=q?'quick':notes?'notes':'chat';if(notes&&signedIn)workspace.refresh().catch(e=>err(e.message));if(q&&signedIn)quick.refresh();}
 $('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);$('tq').onclick=()=>tab('quick');
-try{$('concise').checked=localStorage.getItem('aria.concise')==='true';}catch{}
-$('concise').onchange=()=>{try{localStorage.setItem('aria.concise',String($('concise').checked));}catch{}};
+try{$('concise').checked=localStorage.getItem('aria.mirage')!=='mir';}catch{$('concise').checked=true;}
+$('concise').onchange=()=>{try{localStorage.setItem('aria.mirage',$('concise').checked?'age':'mir');}catch{}};
 const app=$('app');try{const s=localStorage.getItem('aria.history.collapsed');if(s===null?matchMedia('(max-width:860px)').matches:s==='true')app.classList.add('hc')}catch{}
 $('ht').onclick=()=>{const c=app.classList.toggle('hc');try{localStorage.setItem('aria.history.collapsed',String(c))}catch{}};
 estimateDraft();

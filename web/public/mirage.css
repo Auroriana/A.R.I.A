@@ -1,0 +1,6 @@
+/* M.I.R.A.G.E switch: unchecked = M.I.R (left), checked = A.G.E (right). Shares the .sw switch style. */
+.mirage{display:flex;flex-direction:column;align-items:center;gap:5px}
+.mirage-name{display:flex;font-size:10px;letter-spacing:.2em;line-height:1;white-space:nowrap}
+.mirage-name span{color:#555;transition:color .25s}
+.mirage:has(input:not(:checked)) #mir-l,.mirage:has(input:checked) #age-l{color:#fff}
+.mirage .sw{gap:0}

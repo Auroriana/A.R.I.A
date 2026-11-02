@@ -26,7 +26,8 @@ export async function quickRoutes({req,route,url,token,sb,fail,send,readBody,gen
   const b=await readBody(req,80000);
   if (route==='/api/quick-enqueue') {
     const {key,text,mode}=validateQuickInput(b);
-    const r=await rpc('aria_quick_enqueue',{p_key:key,p_text:text,p_mode:mode});
+    const voice=typeof b.personality==='string'&&b.personality.trim()?b.personality.trim().slice(0,16000):null;
+    const r=await rpc('aria_quick_enqueue',{p_key:key,p_text:text,p_mode:mode,...(voice?{p_personality:voice}:{})});
     if (!r.ok) throw fail(r.reason==='full'?'Quick Note queue is full (100). Wait for existing notes to finish.':'This send key already belongs to another note.',409);
     send(200,r); return true;
   }

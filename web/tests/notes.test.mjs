@@ -23,7 +23,7 @@ test('cleanContent normalizes CRLF and enforces limits', () => {
 test('chunker splits on headings, strips frontmatter, ignores # in code fences', () => {
   const md = '---\nai_enabled: true\n---\n\nintro\n\n# One\nalpha\n\n```\n# not a heading\n```\n\n## Two\nbeta\n';
   const c = chunkMarkdown(md);
-  assert.deepEqual(c.map(x => x.heading), ['', 'One', 'Two']);
+  assert.deepEqual(c.map(x => x.heading), ['', 'One', 'One › Two']);
   assert.ok(!c.some(x => x.content.includes('ai_enabled')));
   assert.ok(c[1].content.includes('# not a heading'));
 });

@@ -49,7 +49,7 @@ function split(body, max) {
 export function chunkMarkdown(md, max = 2500) {
   let text = noteIndexText(normalize(md));
   const out = [];
-  let heading = '', buf = [], fence = false;
+  let heading = '', stack = [], buf = [], fence = false;
   const flush = () => {
     const body = buf.join('\n').trim();
     buf = [];
@@ -58,7 +58,7 @@ export function chunkMarkdown(md, max = 2500) {
   for (const line of text.split('\n')) {
     if (/^(```|~~~)/.test(line)) fence = !fence;
     const h = !fence && line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
-    if (h) { flush(); heading = h[1].slice(0, 200); }
+    if (h) { flush(); const level = line.match(/^#+/)[0].length; stack = stack.filter(x => x.level < level); stack.push({ level, text: h[1].slice(0, 100) }); heading = stack.map(x => x.text).join(' › ').slice(0, 300); }
     buf.push(line);
   }
   flush();

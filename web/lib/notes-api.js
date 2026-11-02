@@ -91,6 +91,18 @@ export async function noteRoutes({ req, route, url, token, sb, fail, send }) {
     if(!r.ok)throw fail(r.reason==='exists'?'That destination already has this filename. Choose another folder.':r.reason==='conflict'?'Note changed elsewhere. Reload before moving.':r.reason==='invalid_vault'?'Destination vault not found.':'Note could not be moved.',['exists','conflict'].includes(r.reason)?409:400);
     send(200,r);return true;
   }
+  if (req.method === 'POST' && route === '/api/vault-reindex') {
+    // Rebuilds search chunks (heading paths, order) from the stored text. Text is not changed.
+    const b = await readJson(req), vault = vaultOf(b.vault, fail), offset = Number.isInteger(b.offset) && b.offset >= 0 ? b.offset : 0;
+    const rows = await sb('/rest/v1/aria_notes?select=path,content,version&deleted=eq.false&ai_enabled=eq.true&vault_id=eq.' + vault + '&order=path.asc&limit=25&offset=' + offset, token);
+    let failed = 0;
+    for (const n of rows) {
+      const r = await sb('/rest/v1/rpc/aria_save_note', token, { p_vault: vault, p_path: n.path, p_content: n.content, p_base_version: n.version, p_origin: 'web', p_chunks: chunkMarkdown(n.content) });
+      if (!r.ok) failed++;
+    }
+    send(200, { processed: rows.length, failed, next: rows.length === 25 ? offset + 25 : null });
+    return true;
+  }
   if (req.method === 'POST' && route === '/api/note-delete') {
     const b = await readJson(req), vault = vaultOf(b.vault, fail), path = cleanPath(b.path);
     if (!Number.isInteger(b.baseVersion) || b.baseVersion < 1) throw fail('baseVersion required.');

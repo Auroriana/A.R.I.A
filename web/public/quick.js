@@ -1,6 +1,6 @@
 const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
 
-export function mountQuick(root,{api,open,move,confirm:confirmBox}) {
+export function mountQuick(root,{api,open,move,confirm:confirmBox,voice=()=>null}) {
   root.innerHTML=`<div class="quick-workspace"><h1>Quick note</h1>
     <form id="quick-form"><label class="sr-only" for="quick-text">Quick note</label><textarea id="quick-text" rows="3" maxlength="12000" placeholder="Write a note…" required></textarea>
     <div class="quick-controls"><label class="sw"><input id="quick-detailed" type="checkbox"><i></i><span id="quick-mode">Concise</span></label><button id="quick-send">Send</button></div>
@@ -93,7 +93,7 @@ export function mountQuick(root,{api,open,move,confirm:confirmBox}) {
   $('quick-form').onsubmit=async e=>{
     e.preventDefault();if(!account){tell('Sign in before sending a quick note.');return;}
     const text=$('quick-text').value;if(!text.trim())return;
-    const ticket=epoch,item={key:crypto.randomUUID(),text,mode:$('quick-detailed').checked?'detailed':'concise'};
+    const ticket=epoch,item={key:crypto.randomUUID(),text,mode:$('quick-detailed').checked?'detailed':'concise',personality:voice()};
     $('quick-send').disabled=true;
     try{await locked(()=>{if(ticket!==epoch)throw new Error('Sign-in changed before sending.');const items=read();if(items.length>=100)throw new Error('Local outbox is full. Resend pending notes first.');write([...items,item]);});
       $('quick-text').value='';tell('Saved on this browser. Sending…');renderOutbox();void flush();
