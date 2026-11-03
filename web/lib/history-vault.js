@@ -1,7 +1,7 @@
 import {chunkMarkdown,isUuid} from './notes.js';
 export function transcript(chat){
  if(!isUuid(chat?.id)||typeof chat.title!=='string'||!Array.isArray(chat.messages)||chat.messages.some(m=>!['user','model'].includes(m.role)||typeof m.text!=='string'))throw Object.assign(new Error('Invalid conversation archive.'),{status:400});
- return '# '+chat.title+'\n\nConversation: '+chat.id+'\n\n'+chat.messages.map(m=>'## '+(m.role==='user'?'You':'Aria')+'\n\n'+m.text+(m.ack?'\n\n### Acknowledgment\n\n'+m.ack:'')+(m.personality?'\n\n### Personality version\n\n'+m.personality:'')+(m.web?'\n\n### Web research\n\n'+m.web.answer+'\n\n'+m.web.sources.map(s=>s.title+': '+s.url).join('\n'):'')+(m.sources?.length?'\n\n### References\n\n'+m.sources.map(s=>'['+s.id+'] '+s.vault+' / '+s.path+'\n\n'+s.excerpt).join('\n\n'):'')).join('\n\n');
+ return '# '+chat.title+'\n\nConversation: '+chat.id+'\n\n'+chat.messages.map(m=>'## '+(m.role==='user'?'You':'Capri')+'\n\n'+m.text+(m.ack?'\n\n### Acknowledgment\n\n'+m.ack:'')+(m.personality?'\n\n### Personality version\n\n'+m.personality:'')+(m.web?'\n\n### Web research\n\n'+m.web.answer+'\n\n'+m.web.sources.map(s=>s.title+': '+s.url).join('\n'):'')+(m.sources?.length?'\n\n### References\n\n'+m.sources.map(s=>'['+s.id+'] '+s.vault+' / '+s.path+'\n\n'+s.excerpt).join('\n\n'):'')).join('\n\n');
 }
 export async function archiveChat(chat,{sb,token}){
  const content=transcript(chat);if(!chat.messages.length)return {ok:true};

@@ -37,7 +37,7 @@ test('history retains ten conversations and sends earlier messages as memory',()
 });
 test('checkpoints survive serialization and reject tampering, another owner or different question',()=>{
   const state=createResearchState(),token=sealCheckpoint(state,'owner','question');assert.deepEqual(openCheckpoint(token,'owner','question'),state);
-  assert.throws(()=>openCheckpoint(token,'other','question'));assert.throws(()=>openCheckpoint(token,'owner','other'));assert.throws(()=>openCheckpoint(token.slice(0,50)+'X'+token.slice(51),'owner','question'));
+  assert.throws(()=>openCheckpoint(token,'other','question'));assert.throws(()=>openCheckpoint(token,'owner','other'));assert.throws(()=>openCheckpoint(token.slice(0,50)+(token[50]==='X'?'Y':'X')+token.slice(51),'owner','question'));
 });
 test('resumed research retains earlier evidence, attached images, stable citations and memory',async()=>{
   let state=createResearchState(),calls=0;const files=[{inlineData:{mimeType:'image/png',data:'test'}}],history=[{role:'user',text:'Customer is in Florida.'}];

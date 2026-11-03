@@ -1,3 +1,4 @@
+import {setExpression} from '/expression.js';
 import {personalityHandoff} from '/personality-handoff.js';
 import {mountCoreSettings} from '/core-settings.js';
 import {addUsage} from '/token-usage.js';
@@ -5,21 +6,40 @@ import {estimateQuestion,usageTitle,usageDetails} from '/token-usage.js';
 import {renderMarkdown,highlightClaim} from '/note-renderer.js';
 import {mountWorkspace} from '/workspace.js';
 import {mountQuick} from '/quick.js';
-import {conversationMemory,listChats,saveChat,deleteChat} from '/chat-store.js';
+import {syncChats,portableChat} from '/chat-sync.js';
+import {conversationMemory,listChats,saveChat,deleteChat,chatRows,commitSync} from '/chat-store.js';
 
 const $=id=>document.getElementById(id),el=(t,x)=>{const n=document.createElement(t);if(x!==undefined)n.textContent=x;return n};
 let history=[],signedIn=false,busy=false,cfg,first=true,owner="",currentChat=null,chatController=null;
-const core=mountCoreSettings({api,owner:()=>owner,busy:()=>busy,onArchive:async()=>{archiveError=null;archived.clear();for(const c of [...await listChats(owner)].reverse())archive(c);await archiveQueue;if(archiveError)throw archiveError;await loadVaults();}});
+const core=mountCoreSettings({api,owner:()=>owner,busy:()=>busy,onWelcome:()=>loadWelcome(owner,true),onArchive:async()=>{await syncHistory(true);archiveError=null;archived.clear();for(const c of [...await listChats(owner)].reverse())archive(c);await archiveQueue;if(archiveError)throw archiveError;await loadVaults();}});
 let archiveQueue=Promise.resolve(),archiveError=null;const archived=new Map();
-function archive(c){const account=owner,snapshot=structuredClone(c),fingerprint=JSON.stringify(snapshot.messages);if(!account||!snapshot.messages.length||archived.get(account+':'+c.id)===fingerprint)return;archiveQueue=archiveQueue.then(async()=>{if(owner!==account)return;const result=await api('history-archive',snapshot);if(result.vault&&![...$('vault').options].some(o=>o.value===result.vault)){const selected=$('vault').value;await loadVaults();$('vault').value=selected;}archived.set(account+':'+snapshot.id,fingerprint)}).catch(e=>{archiveError=e;err('History vault sync failed: '+e.message+' The browser copy is still available.');});}
-function personalityToggle(it,m){if(!m.personality){if(m.personalityPending){it.querySelector('.md').textContent='Personality response unavailable. The original is saved.';const b=el('button','Show original');b.className='personality-toggle';b.onclick=()=>{md(it.querySelector('.md'),m.text);b.remove()};it.append(b);
- if(m.webContext){const retry=el('button','Retry Capri response');retry.className='personality-toggle';retry.onclick=async()=>{if(busy)return;lockChat(true);chatController=new AbortController();retry.disabled=true;try{const styled=await personalityCall({...m.webContext,settings:core.get()},chatController.signal);m.personality=styled.answer;m.personalityResearch=styled.personalityResearch;m.personalityPending=false;m.citationWarning=styled.citationWarning;m.web=styled.web;m.webRequest=styled.webRequest;m.usage=addUsage(m.usage,styled.usage);m.sources=[...(m.sources||[]).filter(s=>!s.id.startsWith('P')),...(styled.sources||[])];it.querySelectorAll('.refs,.personality-toggle,.cite-warn').forEach(n=>n.remove());refs(it,m.sources);personalityToggle(it,m);webPanel(it,m);showUsage(it,m.usage);history=conversationMemory(currentChat.messages);await persistChat();}catch(e){err(e.message);retry.disabled=false;}finally{chatController=null;lockChat(false);}};it.append(retry);}
- }return;}const button=el('button','Show original');button.className='personality-toggle';let styled=true;md(it.querySelector('.md'),m.personality);it.querySelector('.personality-research')?.remove();if(m.personalityResearch){const info=el('small',m.personalityResearch.searched?'Personality database: '+m.personalityResearch.searches+' search(es), '+m.personalityResearch.passages.length+' notes':'Personality: core only');info.className='personality-research';info.title=m.personalityResearch.passages.map(p=>p.path).join('\n');it.append(info);}button.onclick=()=>{styled=!styled;md(it.querySelector('.md'),styled?m.personality:m.text);button.textContent=styled?'Show original':'Show personality'};it.append(button);
- if(m.citationWarning){const w=el('span','ⓘ');w.className='cite-warn';w.tabIndex=0;w.title='A citation in this version may be wrong: '+m.citationWarning.unknown.map(i=>'['+i+']').join(', ')+' did not match any source and was removed. Check the original.';w.setAttribute('aria-label',w.title);it.append(w);}}
+function archive(c){const account=owner,snapshot=portableChat(structuredClone(c)),fingerprint=JSON.stringify(snapshot.messages);if(!account||!snapshot.messages.length||archived.get(account+':'+c.id)===fingerprint)return;archiveQueue=archiveQueue.then(async()=>{if(owner!==account)return;const result=await api('history-archive',snapshot);if(result.vault&&![...$('vault').options].some(o=>o.value===result.vault)){const selected=$('vault').value;await loadVaults();$('vault').value=selected;}archived.set(account+':'+snapshot.id,fingerprint)}).catch(e=>{archiveError=e;err('History vault sync failed: '+e.message+' The browser copy is still available.');});}
+function showPersonality(it,m){
+ if(m.personalityPending&&!m.personality){
+   setStatus(it,'This earlier reply was interrupted.');
+   if(m.webContext){
+     const retry=el('button','Finish Capri’s reply');it.append(retry);
+     retry.onclick=async()=>{if(busy)return;lockChat(true);try{
+       const r=await personalityCall({...m.webContext,sprite:true});m.personalityPending=false;
+       Object.assign(m,{text:r.answer,personality:r.answer,edited:Date.now(),expression:r.expression,personalityResearch:r.personalityResearch,usage:addUsage(m.usage,r.usage),sources:[...(m.sources||[]),...(r.sources||[])]});
+       retry.remove();showPersonality(it,m);showUsage(it,m.usage);await persistChat();
+     }catch(e){err(e.message)}finally{lockChat(false)}};
+   }
+   return;
+ }
+ setExpression(m.expression);
+ md(it.querySelector('.md'),m.personality||m.text);
+ it.querySelector('.personality-research')?.remove();
+ if(m.personalityResearch){
+   const r=m.personalityResearch,info=el('small','Personality database · '+r.passages.length+' notes');
+   info.className='personality-research';info.title=r.passages.map(p=>p.path).join('\n');it.append(info);
+ }
+ if(m.citationWarning){const w=el('small','An unrecognized source marker was removed.');w.className='cite-warn';it.append(w);}
+}
 function webPanel(it,m){
  it.querySelector('.web-panel')?.remove();if(!m.web&&!m.webRequest)return;const panel=el('div');panel.className='web-panel';
  if(m.web){const d=el('details');d.append(el('summary','Web research'));const content=el('div');md(content,m.web.answer);d.append(content);for(const source of m.web.sources){const a=el('a',source.title);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';d.append(a,el('br'));}if(m.web.entryPoint){const frame=el('iframe');frame.title='Google Search suggestions';frame.setAttribute('sandbox','allow-popups allow-popups-to-escape-sandbox');frame.srcdoc=m.web.entryPoint;frame.style.cssText='width:100%;height:120px;border:0';d.append(frame)}panel.append(d)}
- if(m.webRequest&&m.webContext){panel.append(el('p',m.webRequest.question),el('small','Public search: '+m.webRequest.query));const yes=el('button','Search the web'),no=el('button','Not now');panel.append(yes,no);no.onclick=async()=>{m.webRequest=null;webPanel(it,m);await persistChat()};yes.onclick=async()=>{if(busy)return;lockChat(true);chatController=new AbortController();yes.disabled=true;try{const styled=await personalityCall({...m.webContext,approvedWebQuery:m.webRequest.query},chatController.signal);m.personality=styled.answer;m.personalityResearch=styled.personalityResearch;m.citationWarning=styled.citationWarning;m.web=styled.web;m.webRequest=null;m.usage=addUsage(m.usage,styled.usage);m.sources=[...(m.sources||[]).filter(s=>!s.id.startsWith('P')),...(styled.sources||[])];it.querySelectorAll('.refs,.personality-toggle,.cite-warn').forEach(n=>n.remove());refs(it,m.sources);personalityToggle(it,m);webPanel(it,m);showUsage(it,m.usage);history=conversationMemory(currentChat.messages);await persistChat()}catch(e){err(e.message);yes.disabled=false}finally{chatController=null;lockChat(false)}};}it.append(panel);
+ if(m.webRequest&&m.webContext){panel.append(el('p',m.webRequest.question),el('small','Public search: '+m.webRequest.query));const yes=el('button','Search the web'),no=el('button','Not now');panel.append(yes,no);no.onclick=async()=>{m.webRequest=null;webPanel(it,m);await persistChat()};yes.onclick=async()=>{if(busy)return;lockChat(true);chatController=new AbortController();yes.disabled=true;try{const styled=await personalityCall({...m.webContext,approvedWebQuery:m.webRequest.query},chatController.signal);m.edited=Date.now();m.text=styled.answer;m.expression=styled.expression;delete m.personality;m.personalityResearch=styled.personalityResearch;m.citationWarning=styled.citationWarning;m.web=styled.web;m.webRequest=null;m.usage=addUsage(m.usage,styled.usage);m.sources=[...(m.sources||[]).filter(s=>!s.id.startsWith('P')),...(styled.sources||[])];it.querySelectorAll('.refs,.personality-toggle,.cite-warn').forEach(n=>n.remove());refs(it,m.sources);showPersonality(it,m);webPanel(it,m);showUsage(it,m.usage);history=conversationMemory(currentChat.messages);await persistChat()}catch(e){err(e.message);yes.disabled=false}finally{chatController=null;lockChat(false)}};}it.append(panel);
 }
 async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const d=await r.json();if(!r.ok)throw new Error(d.error||'Personality unavailable.');return d;}
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
@@ -36,7 +56,7 @@ async function chat(body,on){
 function setStatus(it,text){const n=it.querySelector('.md');n.textContent=text;n.classList.add('status')}
 function md(root,text){root.classList.remove('status');renderMarkdown(root,text,{citations:true,notes:workspace.notes,onLink:(link)=>{if(link.resolved){tab(true);workspace.open(link.resolved)}}});}
 // ---- messages, references (collapsed), citation highlight
-function msg(role,text){const it=el('article');it.className='m '+role;const w=el('div','YOU');if(role!=='user')w.textContent='ARIA';w.className='who';const b=el('div');b.className='md';if(role==='user')b.textContent=text;else b.textContent=text;it.append(w,b);$('msgs').append(it);$('welcome').hidden=true;$('scroll').scrollTop=1e9;return it}
+function msg(role,text){const it=el('article');it.className='m '+role;const w=el('div','YOU');if(role!=='user')w.textContent='Capri';w.className='who';const b=el('div');b.className='md';if(role==='user')b.textContent=text;else b.textContent=text;it.append(w,b);$('msgs').append(it);$('welcome').hidden=true;$('scroll').scrollTop=1e9;return it}
 function refs(it,src){if(!src.length)return;const d=el('details');d.className='refs';d.append(el('summary','References ('+src.length+')'));
  for(const x of src){const e=el('details');e.className='src';e.dataset.s=x.id;e.dataset.path=x.path;e.dataset.vault=x.vault||'';const p=el('div');p.className='ex';p.dataset.t=x.excerpt;
  renderMarkdown(p,x.excerpt,{path:x.path,notes:workspace.notes,onLink:async link=>{tab(true);const v=[...document.querySelector('#nv').options].find(o=>o.textContent===x.vault);await workspace.openReference(link,x.path,v?.value);}});
@@ -91,13 +111,13 @@ function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent=S
 $('q').addEventListener('input',estimateDraft);
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
-function reset(){history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';estimateDraft()}
+function reset(){setExpression('neutral_attention');showWelcome();history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';estimateDraft()}
 const GEM='<svg viewBox="0 0 24 24"><path d="M12 2c.5 5.5 4.5 9.5 10 10-5.5.5-9.5 4.5-10 10-.5-5.5-4.5-9.5-10-10 5.5-.5 9.5-4.5 10-10z"/></svg>',DS='<svg viewBox="0 0 24 24"><path d="M2 14c0-4 4-8 10-8 4 0 7 2 8 5l2-2-.5 6c-1 3-5 5-10 5-5 0-9.5-2-9.5-6z"/><circle cx="9" cy="12" r=".8"/></svg>';
 function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.className='pg';g.innerHTML=GEM+'GEMINI';p.append(g);
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
  const d=el('div');d.className='pg off';d.innerHTML=DS+'DEEPSEEK · OFF';p.append(d)}
 function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('mp').title=m?.name||'';}
-async function acct(email){signedIn=true;owner=email;await core.load().catch(()=>{});$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();quick.init(owner);if(location.hash==='#notes')tab(true);if(location.hash==='#quick')tab('quick');}
+async function acct(email){currentChat=null;reset();tab(false);$('resume-chat').hidden=true;signedIn=true;owner=email;await core.load().catch(()=>{});$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();quick.init(owner);scheduleSync();loadWelcome(owner);}
 async function loadVaults(){try{const{vaults}=await api('vaults');const v=$('vault');v.replaceChildren(new Option('All vaults','all'));for(const x of vaults)v.append(new Option(x.name,x.id));await workspace.init(vaults,owner);}catch(e){err(e.message)}}
 function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');$('vault').hidden=v!=='vault';if(currentChat){currentChat.mode=v;persistChat();}}
 $('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode('vault');
@@ -107,7 +127,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.pick'))$('pm').hidd
 $('pt').onclick=()=>$('app').classList.toggle('pt');
 $('skip').onclick=()=>$('login').close();
 $('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{await acct((await api('login',{email:$('email').value,password:$('pw').value})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
-$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;reset();workspace.clear();quick.clear();owner='';core.clear();currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
+$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;welcomeLines=[];reset();workspace.clear();quick.clear();owner='';core.clear();currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 
 function blankChat(){return {id:crypto.randomUUID(),title:'New conversation',updated:Date.now(),messages:[],mode:$('mode').value,vault:$('vault').value||'all',model:$('model').value,pending:null};}
@@ -116,50 +136,99 @@ async function refreshHistory(){const chats=await listChats(owner),box=$('chat-h
   const x=el('button','×');x.className='hist-del';x.setAttribute('aria-label','Delete conversation');x.onclick=e=>{e.stopPropagation();removeChat(c.id)};row.append(b,x);box.append(row)}}
 const closeHist=()=>{if(matchMedia('(max-width:860px)').matches)$('app').classList.add('hc')};
 async function openChat(id){if(busy)return;const c=(await listChats(owner)).find(c=>c.id===id);if(c){displayChat(c);await refreshHistory();closeHist()}}
-async function removeChat(id){if(busy||!await confirmAction('Delete this browser conversation? Its History vault archive remains available.','Delete'))return;await deleteChat(owner,id);if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
-async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);archive(currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
+async function removeChat(id){if(busy||!await confirmAction('Delete this conversation on your devices? Its History vault archive remains available.','Delete'))return;await deleteChat(owner,id);scheduleSync();if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
+async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);scheduleSync();archive(currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
 function displayChat(c){reset();currentChat=c;$('mode').value=c.mode||'general';$('mc').classList.toggle('on',c.mode!=='vault');$('mv').classList.toggle('on',c.mode==='vault');$('vault').hidden=c.mode!=='vault';$('vault').value=c.vault||'all';if(cfg.models.some(m=>m.id===c.model))$('model').value=c.model;buildModels();upd();
- for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);personalityToggle(it,m);webPanel(it,m);}}
- history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume research';estimateDraft();
+ for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);showPersonality(it,m);webPanel(it,m);}}
+ history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume reply';estimateDraft();
 }
-async function restoreChats(){try{const chats=await listChats(owner);for(const c of [...chats].reverse())archive(c);if(chats[0])displayChat(chats[0]);await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
+let syncTimer,syncRunning=false;
+function scheduleSync(){clearTimeout(syncTimer);syncTimer=setTimeout(syncHistory,400);}
+async function syncHistory(manual=false){
+ const account=owner;if(!account||!signedIn||busy||syncRunning||document.hidden)return;
+ syncRunning=true;const active=()=>account===owner&&signedIn;
+ try{
+   await syncChats({rows:await chatRows(account),api,active,commit:async(prior,next)=>{
+     if(!active())return;
+     const applied=await commitSync(account,prior,next);
+     if(applied&&active()&&!busy&&prior.id===currentChat?.id){
+       if(!next){currentChat=null;reset();$('resume-chat').hidden=true;}
+       else if(!currentChat.pending&&JSON.stringify(currentChat.messages)!==JSON.stringify(next.messages))displayChat(next);
+     }
+   }});
+   if(active())$('sync-status').textContent='';
+ }catch(e){if(active())$('sync-status').textContent='Chat sync pending · '+e.message;if(manual)throw e;}
+ finally{syncRunning=false;if(active())await refreshHistory();}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleSync()});
+window.addEventListener('online',scheduleSync);
+setInterval(()=>{if(!$('chat').hidden)scheduleSync()},30000);
+async function restoreChats(){try{await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
 $('new-chat').onclick=()=>{if(busy)return;reset();currentChat=null;$('resume-chat').hidden=true;refreshHistory();closeHist();$('q').focus()};
 $('resume-chat').onclick=()=>{if(!busy&&currentChat?.pending)runPending();};
-function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp','concise','new-chat','vault','aria-settings'])$(id).disabled=value;$('resume-chat').hidden=value||!currentChat?.pending;$('pause-chat').hidden=!value;}
+function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp','concise','new-chat','vault','aria-settings'])$(id).disabled=value;$('resume-chat').hidden=value||!currentChat?.pending;$('pause-chat').hidden=!value;if(!value)scheduleSync();}
 $('pause-chat').onclick=()=>chatController?.abort();
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
  const pending=currentChat.pending,it=msg('model','');setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
- const settings=pending.body.settings,personalityOn=true;
- showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(pending.body.message,pending.body.history,pending.body.files),estimated:true});
+ const body=pending.body,signal=chatController.signal;
+ showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(body.message,body.history,body.files),estimated:true});
  try{
-  let result;
-  for(;;){result=await chat({...pending.body,resumable:true,...(pending.continuation?{continuation:pending.continuation}:{})},ev=>{if(ev.stage==='usage')pending.usage=ev.usage;onProgress(it,ev)});
-    if(result.usage){pending.usage=result.usage;showUsage(it,result.usage);}
-    if(!result.continuation)break;pending.continuation=result.continuation;await persistChat();setStatus(it,'Researching · '+result.research.searches+' searches');
-  }
-  const all=result.sources||[],shown=all.filter(s=>s.cited!==false),extra=all.length-shown.length;
-  const r=result.research,text=result.answer+(result.truncated?'\n\n[Answer reached its output limit.]':'')+(r?'\n\nResearch: '+r.searches+' searches · '+(r.planningCalls+1)+' model calls'+(r.verifyRounds?' · verified '+r.verifyRounds+'×':'')+(extra?' · '+extra+' retrieved passage'+(extra===1?'':'s')+' not cited':'')+(r.warnings.length?'\n\n'+r.warnings.join(' '):''):'');
-  if(personalityOn)setStatus(it,'Preparing Capri’s response…');else md(it.querySelector('.md'),text);refs(it,shown);markUsed(all);cool();
-  const saved={role:'model',text,reasoningText:result.answer,followupCache:result.followupCache??null,sources:shown,usage:result.usage,personalityPending:!!personalityOn};currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);await persistChat();
-  if(personalityOn){
-    try{saved.webContext=personalityHandoff(pending.body,result);await persistChat();const styled=await personalityCall(saved.webContext,chatController.signal);saved.web=styled.web;saved.webRequest=styled.webRequest;saved.personality=styled.answer;saved.personalityResearch=styled.personalityResearch;saved.citationWarning=styled.citationWarning;saved.personalityPending=false;history=conversationMemory(currentChat.messages);saved.sources=[...shown,...(styled.sources||[])];saved.usage=addUsage(saved.usage,styled.usage);refs(it,styled.sources||[]);personalityToggle(it,saved);webPanel(it,saved);showUsage(it,saved.usage)}catch(e){personalityToggle(it,saved);err(e.name==='AbortError'?'Personality stopped. The original answer is saved.':'Original answer saved. '+e.message)}
-    await persistChat();
-  }
- }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setStatus(it,'Research paused: '+message);err(message+' Your progress is saved. Use Resume research to continue.');cool();}
+   if(!pending.decision){
+     // Older in-flight checkpoints already have a reasoning route.
+     pending.decision=pending.continuation?{route:body.mode==='vault'?'vault':'reasoning'}:
+       await personalityCall({action:'turn',message:body.message,mode:body.mode,history:body.history,
+         settings:body.settings,hasAttachments:!!body.files?.length},signal);
+     await persistChat();
+   }
+   const first=pending.decision;
+   let reply=first,extraSources=[],followupCache=null,webContext=null,usage=first.usage;
+   if(first.route!=='reply'){
+     if(!['reasoning','vault'].includes(first.route))throw Error('Invalid conversation route.');
+     setExpression('focused_analysis');
+     if(!pending.report){
+       for(;;){
+         const result=await chat({...body,mode:first.route==='vault'?'vault':'general',researchTool:true,resumable:true,
+           ...(pending.continuation?{continuation:pending.continuation}:{})},ev=>{
+           if(ev.stage==='usage'){pending.usage=addUsage(first.usage,ev.usage);showUsage(it,pending.usage);}else onProgress(it,ev);
+         });
+         if(!result.continuation){pending.report=result;break;}
+         pending.continuation=result.continuation;await persistChat();
+       }
+       await persistChat();
+     }
+     const report=pending.report;
+     setStatus(it,'Preparing Capri’s response…');
+     webContext={...personalityHandoff(body,report),sprite:true};
+     reply=await personalityCall(webContext,signal);
+     extraSources=(report.sources||[]).filter(s=>s.cited!==false);markUsed(report.sources||[]);
+     followupCache=report.followupCache??null;usage=addUsage(addUsage(first.usage,report.usage),reply.usage);
+   }
+   if(typeof reply.answer!=='string'||!reply.answer.trim())throw Error('Capri returned an empty reply.');
+   const turn=currentChat.messages.find(m=>m.id===pending.turnId)||currentChat.messages.at(-1);
+   const saved={id:crypto.randomUUID(),turn:turn.id,started:turn.started,edited:Date.now(),role:'model',
+     text:reply.answer,expression:reply.expression,sources:[...extraSources,...(reply.sources||[])],personalityResearch:reply.personalityResearch,
+     citationWarning:reply.citationWarning,usage,followupCache,web:reply.web,webRequest:reply.webRequest,
+     ...(reply.webRequest?{webContext}:{})};
+   currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);
+   showPersonality(it,saved);refs(it,saved.sources);webPanel(it,saved);showUsage(it,usage);cool();await persistChat();
+ }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setExpression('neutral_attention');setStatus(it,'Reply paused: '+message);err(message+' Your progress is saved. Use Resume reply to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
 }
 $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('login').showModal();return;}
  const text=$('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':'');if(!text)return;
  if(currentChat?.pending){err('Resume the pending question or start a new conversation.');return;}
+ lockChat(true);
+ try{
  currentChat??=blankChat();history=conversationMemory(currentChat.messages);
  const sent=files;files=[];renderAtt();$('q').value='';nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';
  const display=text+(sent.length?'\n'+sent.map(f=>'[attached: '+f.name+']').join(' '):'');msg('user',display);
- if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({role:'user',text:display});
+ if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({id:crypto.randomUUID(),started:Date.now(),role:'user',text:display});
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
  const overview=(await listChats(owner)).filter(c=>c.id!==currentChat.id).map(c=>({title:c.title,recent:c.messages.slice(-4).map(m=>({role:m.role,text:(m.personality||m.text).slice(0,1500)}))}));
- currentChat.pending={body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,followupCache:[...currentChat.messages].reverse().find(m=>m.role==='model')?.followupCache??null,concise:$('concise').checked,depth:$('concise').checked?'age':'mir',settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
- await persistChat();await runPending();};
+ currentChat.pending={turnId:currentChat.messages.at(-1).id,body:{message:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,followupCache:[...currentChat.messages].reverse().find(m=>m.role==='model')?.followupCache??null,concise:$('concise').checked,depth:$('concise').checked?'age':'mir',settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
+ await persistChat();await runPending();
+ }catch(e){err(e.message);}finally{lockChat(false);}};
 // ---- attachments (images are shrunk to JPEG <=1600px; PDFs sent as-is; ~2.8 MB total)
 let files=[];
 const b64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(',')[1]);r.onerror=no;r.readAsDataURL(blob)});
@@ -180,14 +249,35 @@ function ask(label,val=''){return new Promise(ok=>{const d=$('ask');let v=null;$
 function confirmAction(label,okText='Confirm'){return new Promise(ok=>{const d=$('ask');let v=false;$('al').textContent=label;$('av').hidden=true;$('ao').textContent=okText;
  d.onclose=()=>{$('av').hidden=false;$('ao').textContent='OK';ok(v)};$('af').onsubmit=e=>{e.preventDefault();v=true;d.close()};$('ac').onclick=()=>d.close();d.showModal()})}
 // ---- app views; note drafts are kept independently of chat navigation.
-function tab(n){const q=n==='quick',notes=n===true,other=q||notes;$('ht').hidden=other;$('chat').hidden=other;$('notes').hidden=!notes;$('quick').hidden=!q;$('app').classList.toggle('nm',other);$('tc').classList.toggle('on',!other);$('tn').classList.toggle('on',notes);$('tq').classList.toggle('on',q);location.hash=q?'quick':notes?'notes':'chat';if(notes&&signedIn)workspace.refresh().catch(e=>err(e.message));if(q&&signedIn)quick.refresh();}
+function tab(n){const q=n==='quick',notes=n===true,other=q||notes;$('ht').hidden=other;$('chat').hidden=other;$('notes').hidden=!notes;$('quick').hidden=!q;$('app').classList.toggle('nm',other);$('tc').classList.toggle('on',!other);$('tn').classList.toggle('on',notes);$('tq').classList.toggle('on',q);window.history.replaceState(null,'',location.pathname+location.search+(other?(q?'#quick':'#notes'):''));if(notes&&signedIn)workspace.refresh().catch(e=>err(e.message));if(q&&signedIn)quick.refresh();}
 $('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);$('tq').onclick=()=>tab('quick');
 try{$('concise').checked=localStorage.getItem('aria.mirage')!=='mir';}catch{$('concise').checked=true;}
 $('concise').onchange=()=>{try{localStorage.setItem('aria.mirage',$('concise').checked?'age':'mir');}catch{}};
 const app=$('app');try{const s=localStorage.getItem('aria.history.collapsed');if(s===null?matchMedia('(max-width:860px)').matches:s==='true')app.classList.add('hc')}catch{}
 $('ht').onclick=()=>{const c=app.classList.toggle('hc');try{localStorage.setItem('aria.history.collapsed',String(c))}catch{}};
 estimateDraft();
-const h=new Date().getHours();$('gr').textContent=h>=5&&h<12?'Good morning.':h>=12&&h<18?'Good afternoon.':'Good evening.';
+const launchURL=new URL(location.href),openNotes=launchURL.searchParams.get('open')==='notes';launchURL.searchParams.delete('open');window.history.replaceState(null,'',launchURL.pathname+launchURL.search);
+let welcomeLines=[];
+function showWelcome(){
+ const h=new Date().getHours();
+ $('gr').textContent=welcomeLines.length?welcomeLines[Math.floor(Math.random()*welcomeLines.length)]:
+   h>=5&&h<12?'Good morning.':h>=12&&h<18?'Good afternoon.':'Good evening.';
+}
+async function loadWelcome(account,refresh=false){
+ const key='aria.welcome.'+account;
+ const apply=pool=>{if(owner===account&&Array.isArray(pool?.lines)&&pool.lines.length){
+   welcomeLines=pool.lines;showWelcome();try{localStorage.setItem(key,JSON.stringify(pool));}catch{}
+ }};
+ try{
+   if(!refresh){try{apply(JSON.parse(localStorage.getItem(key)));}catch{}}
+   let pool=await api('welcome');apply(pool);
+   if(refresh||!pool.lines?.length||Date.parse(pool.generated_at)<Date.now()-7*86400000){
+     if(owner!==account)return;
+     pool=await api('welcome',{refresh,settings:core.get()});apply(pool);
+   }
+ }catch(e){if(refresh)throw e;}
+}
+showWelcome();
 try{cfg=await api('status');$('model').value=cfg.models[0].id;buildModels();upd();
  if(!cfg.configured||!cfg.geminiReady){$('setup').hidden=false;$('setup').textContent='Preview mode: finish Supabase and Gemini setup to enable answers.'}
- if(cfg.configured)try{await acct((await api('session')).email)}catch{}}catch{err('Could not reach the app server.')}
+ if(cfg.configured)try{await acct((await api('session')).email);if(openNotes)tab(true)}catch{}}catch{err('Could not reach the app server.')}

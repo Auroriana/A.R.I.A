@@ -1,16 +1,12 @@
-# Current runtime update — conditional personality RAG
+# Personality-first conversation
 
-Validation: all 123 web tests pass, including core-only replies, model-requested retrieval, corrected-record selection, deduplication, bounded context, empty matches and loop termination. Real-provider retrieval frequency has not been measured; 70–80% is the requested prompt target.
+Each turn starts with a local keyword lookup over the personality catalog. The personality model receives the retrieved records, short transcript samples and the current conversation. It can reply immediately or ask for general reasoning or vault research. For delegated turns, Capri receives the findings and their source IDs before writing the visible reply. A retry can resume from the saved route or findings on the originating device.
 
-The personality response generation can now return a structured personalitySearch request instead of a final answer. The server searches the dedicated generated catalog and supplies up to three complete notes, including provenance, per round. Two rounds and 12,000 total content characters are allowed; repeated queries and duplicate records are suppressed within a reply. The model then writes the final response using the core plus retrieved guidance. No separate personality-retrieval classifier or embedding service is added. The existing factual-memory/web planner remains unchanged.
+The browser shows one reply and its personality lookup details. Completed messages sync through Supabase. Checkpoints, permission prompts and attachment bytes stay local.
 
-The owner now prefers database confirmation on approximately 70–80% of replies. This is prompt guidance, not an enforced random quota or measured rate. Trivial replies can use the core. personalityResearch reports searched, searches, and the selected IDs, paths, kinds and hashes. The browser saves that metadata with the message and displays core-only versus database use.
+## Earlier architecture snapshot
 
-The live implementation uses weighted keyword retrieval over the dedicated server catalog. Semantic embeddings, cross-turn passage caching and a measured real-provider retrieval rate remain future work. The older architecture snapshot below describes the preceding milestone.
-
-# Architecture and validation
-
-## Existing implementation
+### Previous implementation
 
 Chat uses route/planning/answer calls with authenticated note retrieval. The final draft and a compact source identity map are passed to a separate personality endpoint. That endpoint can decide to search permitted AI-enabled notes and can propose web research with user approval. It has its own usage accounting. The identity map is not the supporting passage text: valid citation IDs alone do not prove a rewritten claim still follows from its source.
 

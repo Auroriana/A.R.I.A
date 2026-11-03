@@ -5,5 +5,5 @@ export async function proposeLayout(content, generate) {
   const result=await generate({systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:[{text:JSON.stringify(body.split('\n').map((text,i)=>({line:i+1,text})))}]}],generationConfig:{maxOutputTokens:8192}});
   if(result.truncated)throw Object.assign(new Error('The layout suggestion was incomplete. Your text was not changed.'),{status:422});
   try{return validateLayout(body,JSON.parse(result.answer.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'')));}
-  catch{throw Object.assign(new Error('Aria returned an invalid layout. Your text was not changed.'),{status:422});}
+  catch{throw Object.assign(new Error('Capri returned an invalid layout. Your text was not changed.'),{status:422});}
 }

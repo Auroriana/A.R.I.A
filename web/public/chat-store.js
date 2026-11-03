@@ -1,3 +1,4 @@
+import {identifyMessages,mergeChats} from './chat-sync.js';
 export const MAX_CHATS=10;
 export function recentChats(chats){return [...chats].sort((a,b)=>b.updated-a.updated).slice(0,MAX_CHATS);}
 export function conversationMemory(messages){
@@ -12,12 +13,39 @@ export function conversationMemory(messages){
 }
 let opening;
 function database(){return opening??=new Promise((resolve,reject)=>{const r=indexedDB.open('aria-conversations',1);r.onupgradeneeded=()=>{const s=r.result.createObjectStore('chats',{keyPath:'key'});s.createIndex('owner','owner');};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
-export async function listChats(owner){const db=await database();return new Promise((resolve,reject)=>{const r=db.transaction('chats').objectStore('chats').index('owner').getAll(owner);r.onsuccess=()=>resolve(recentChats(r.result));r.onerror=()=>reject(r.error);});}
-export async function saveChat(owner,chat){
-  const db=await database();return new Promise((resolve,reject)=>{
-    const tx=db.transaction('chats','readwrite'),store=tx.objectStore('chats'),r=store.index('owner').getAll(owner);
-    r.onsuccess=()=>{const entry={...chat,owner,key:owner+':'+chat.id},all=r.result.filter(c=>c.id!==chat.id);all.push(entry);const keep=new Set(recentChats(all).map(c=>c.key));store.put(entry);all.forEach(c=>{if(!keep.has(c.key))store.delete(c.key);});};
-    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+export async function chatRows(owner){
+  const db=await database();
+  return new Promise((resolve,reject)=>{
+    const r=db.transaction('chats').objectStore('chats').index('owner').getAll(owner);
+    r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
   });
 }
-export async function deleteChat(owner,id){const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction('chats','readwrite');tx.objectStore('chats').delete(owner+':'+id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}
+export async function listChats(owner){return recentChats((await chatRows(owner)).filter(c=>!c.deleted));}
+async function update(owner,id,edit){
+  const db=await database(),key=owner+':'+id;
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('chats','readwrite'),store=tx.objectStore('chats'),read=store.get(key);
+    let changed=false;
+    read.onsuccess=()=>{
+      const next=edit(read.result);
+      if(next===undefined)return;
+      changed=true;
+      if(next===null)store.delete(key);
+      else store.put({...next,key,owner,revision:crypto.randomUUID()});
+    };
+    tx.oncomplete=()=>resolve(changed);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+  });
+}
+export function saveChat(owner,chat){
+  identifyMessages(chat);
+  const snapshot=structuredClone(chat);
+  return update(owner,chat.id,old=>old?.deleted?undefined:{
+    ...(old?mergeChats(snapshot,old):snapshot),version:old?.version||0,dirty:true
+  });
+}
+export function deleteChat(owner,id){
+  return update(owner,id,old=>({id,updated:Date.now(),version:old?.version||0,deleted:true}));
+}
+export function commitSync(owner,prior,next){
+  return update(owner,prior.id,old=>old?.revision===prior.revision&&Boolean(old)===Boolean(prior.key)?next:undefined);
+}

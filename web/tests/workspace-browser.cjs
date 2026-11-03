@@ -18,6 +18,7 @@ const http=require('node:http'),fs=require('node:fs/promises'),path=require('nod
       docs.set(body.path,{content:body.content,version:(old?.version??0)+1});saved.push(body);return json({version:docs.get(body.path).version,ai_enabled:true});
     }
     if(url.pathname==='/api/note-format')return json({layout:{blocks:[{line:2,kind:'heading',level:1}],spans:[]}});
+    if(url.pathname==='/api/personality')return json(body.action==='turn'?{route:body.mode==='vault'?'vault':'reasoning'}:{answer:body.answer});
     if(url.pathname==='/api/chat'){
       submitted.push(body);chatStep++;
       if(body.message==='Resume test'&&body.continuation&&!interrupted){interrupted=true;return json({error:'The connection was interrupted.'},503);}
@@ -34,7 +35,7 @@ const http=require('node:http'),fs=require('node:fs/promises'),path=require('nod
     browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
     const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
     page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(15000);
-    const origin=`http://127.0.0.1:${server.address().port}`;await page.goto(origin+'/#notes');await page.locator('#nl [title="00 Inbox"]').waitFor();
+    const origin=`http://127.0.0.1:${server.address().port}`;await page.goto(origin+'/#notes');await page.locator('#out').waitFor();await page.locator('#tn').click();await page.locator('#nl [title="00 Inbox"]').waitFor();
     assert.equal(await page.locator('#nl').innerText().then(x=>x.includes('.md')),false);
     const folder=page.locator('#nl [title="00 Inbox"]');await folder.click();await page.locator('#nl [title="00 Inbox/Reinstatement.md"]').click();
     await page.locator('#note-rendered h1').waitFor();assert.equal(await page.locator('#note-rendered h1').innerText(),'Reinstatement');
@@ -49,13 +50,13 @@ const http=require('node:http'),fs=require('node:fs/promises'),path=require('nod
     await page.getByRole('button',{name:'Read',exact:true}).click();await page.locator('#note-rendered summary').filter({hasText:/^If yes$/}).click();
     await fs.mkdir(path.join(__dirname,'../../reports'),{recursive:true});await page.screenshot({path:path.join(__dirname,'../../reports/notes-desktop.png'),fullPage:true});
     console.log('Notes tree, tabs, drafts, read view passed.');
-    await page.reload();await page.locator('#note-rendered h1').waitFor();assert.equal(await page.locator('.note-tab').count(),2);
+    await page.reload();await page.locator('#out').waitFor();await page.locator('#tn').click();await page.locator('#note-rendered h1').waitFor();assert.equal(await page.locator('.note-tab').count(),2);
     await page.locator('#tc').click();await page.locator('#mv').click();await page.locator('#q').fill('Customer is in Florida.');await page.locator('#send').click();await page.waitForFunction(()=>!document.querySelector('#send').disabled);
     assert.equal(submitted.length,2);assert.equal(submitted[1].continuation,'checkpoint-fixture');
     await page.locator('.c').first().click();assert.equal(await page.locator('.src .note-fold').count()>0,true);assert.equal(await page.locator('.src .chat-example').count(),1);assert.equal(await page.locator('.md img,.md script').count(),0);
     await page.locator('#q').fill('What should I do next?');await page.locator('#send').click();await page.waitForFunction(()=>!document.querySelector('#send').disabled);assert.ok(submitted.at(-1).history.some(m=>m.text.includes('Customer is in Florida')));
     console.log('Chat checkpoints, references and memory passed.');
-    await page.locator('#new-chat').click();await page.locator('#q').fill('Resume test');await page.locator('#send').click();await page.locator('#resume-chat').waitFor();await page.reload();await page.locator('#resume-chat').waitFor();await page.locator('#resume-chat').click();await page.waitForFunction(()=>!document.querySelector('#send').disabled);assert.equal(await page.locator('#resume-chat').isHidden(),true);
+    await page.locator('#new-chat').click();await page.locator('#q').fill('Resume test');await page.locator('#send').click();await page.locator('#resume-chat').waitFor();await page.reload();await page.locator('#chat-history button[title="Resume test"]').click();await page.locator('#resume-chat').waitFor();await page.locator('#resume-chat').click();await page.waitForFunction(()=>!document.querySelector('#send').disabled);assert.equal(await page.locator('#resume-chat').isHidden(),true);
     const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=','base64');
     await page.locator('#new-chat').click();await page.locator('#file').setInputFiles({name:'screenshot.png',mimeType:'image/png',buffer:png});await page.locator('.at').waitFor();await page.locator('#q').fill('Read screenshot');await page.locator('#send').click();await page.waitForFunction(()=>!document.querySelector('#send').disabled);assert.equal(submitted.at(-1).files[0].mime,'image/png');assert.equal(submitted.at(-1).files[0].data,png.toString('base64'));
     for(let i=0;i<9;i++){await page.locator('#new-chat').click();await page.locator('#q').fill('Chat '+i);await page.locator('#send').click();await page.waitForFunction(()=>!document.querySelector('#send').disabled);}

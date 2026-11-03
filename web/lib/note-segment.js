@@ -23,12 +23,12 @@ const folderSafe=s=>{const v=safe(s,80);return /^(con|prn|aux|nul|com[1-9]|lpt[1
 export function parsePlan(answer,lineCount){
   let value;
   try{value=JSON.parse(String(answer).trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}
-  catch{throw bad('Aria returned an unreadable segmentation plan. Nothing was changed.');}
+  catch{throw bad('Capri returned an unreadable segmentation plan. Nothing was changed.');}
   const list=value?.segments;
-  if(!Array.isArray(list)||!list.length||list.length>MAX_SEGMENTS)throw bad('Aria returned an invalid number of segments. Nothing was changed.');
+  if(!Array.isArray(list)||!list.length||list.length>MAX_SEGMENTS)throw bad('Capri returned an invalid number of segments. Nothing was changed.');
   let last=0;
   const plan=list.map(s=>{
-    if(!s||!Number.isInteger(s.line)||s.line<=last||s.line>lineCount||typeof s.title!=='string'||!s.title.trim())throw bad('Aria returned an invalid segment range. Nothing was changed.');
+    if(!s||!Number.isInteger(s.line)||s.line<=last||s.line>lineCount||typeof s.title!=='string'||!s.title.trim())throw bad('Capri returned an invalid segment range. Nothing was changed.');
     last=s.line;
     const appliesTo=typeof s.appliesTo==='string'&&s.appliesTo.trim()?s.appliesTo.replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,120):'not specified';
     return {line:s.line,title:safe(s.title),appliesTo};

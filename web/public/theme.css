@@ -1,4 +1,4 @@
-/* Aria dark forest theme. Load AFTER style.css / notes.css / import.css. Delete this file to revert. */
+/* Capri dark forest theme. Load AFTER style.css / notes.css / import.css. Delete this file to revert. */
 :root{color-scheme:dark;--bg:#070a08;--panel:#0b110d;--raised:#101812;--line:#1b2a20;--line-soft:#131e17;--text:#dbe6de;--muted:#82978a;--faint:#56695d;--accent:#4fb477;--accent-hi:#8de6ae;--accent-deep:#16382a;--on-accent:#06100a;--danger:#e8907c;--warn:#cdb77a;color:var(--text);background:var(--bg)}
 ::selection{background:var(--accent-deep);color:var(--accent-hi)}
 :focus-visible{outline-color:var(--accent)}

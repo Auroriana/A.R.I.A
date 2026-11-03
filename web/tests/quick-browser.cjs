@@ -44,14 +44,14 @@ const http=require('node:http'),fs=require('node:fs/promises'),path=require('nod
   browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe'});
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/#quick`);
-  await page.waitForSelector('#quick:not([hidden])');
+  await page.locator('#out').waitFor();await page.locator('#tq').click();await page.waitForSelector('#quick:not([hidden])');
   await page.fill('#quick-text',original);await page.click('.quick-controls .sw');await page.click('#quick-send');
   await page.waitForFunction(()=>document.querySelector('#quick-status').textContent.includes('unsent text'));
   assert.equal(await page.inputValue('#quick-text'),'');
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('aria.quick.outbox.test@example.com')).length),1);
   assert.equal(jobs.size,1);assert.equal([...jobs.values()][0].mode,'detailed');
   // Reload after the server accepted the first send but its acknowledgement was lost.
-  loseResponse=false;await page.reload();
+  loseResponse=false;await page.reload();await page.locator('#out').waitFor();await page.locator('#tq').click();
   await page.waitForSelector('.quick-pill.filed');
   assert.equal(jobs.size,1);assert.equal([...jobs.values()][0].text,original);
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('aria.quick.outbox.test@example.com')).length),0);

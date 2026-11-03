@@ -1,4 +1,4 @@
-/* Obsidian-style structure, Aria's existing monochrome palette. */
+/* Obsidian-style structure, Capri's existing monochrome palette. */
 #notes{--note-line:#262626;--note-muted:#888;--note-panel:#080808}
 .notes-workspace{display:grid;grid-template-columns:var(--explorer-width,260px) 5px minmax(0,1fr);height:100%;min-height:0}
 .file-explorer{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--note-line);background:var(--note-panel)}
@@ -41,7 +41,7 @@
 .ctx button{border:0;text-align:left;padding:7px 12px;font-size:12px;color:#ddd;background:none}
 .ctx button:hover:not(:disabled){background:#222;color:#fff}
 .ctx button.danger{color:#f07575}.ctx button.danger:hover:not(:disabled){background:#2a1111;color:#ff9a9a}
-.chat-history-bar:not(:has(button:not([hidden]))){display:none}
+.chat-history-bar #sync-status:not(:empty){display:inline}
 #al{white-space:pre-line;line-height:1.6}
 
 /* vault description dialog */

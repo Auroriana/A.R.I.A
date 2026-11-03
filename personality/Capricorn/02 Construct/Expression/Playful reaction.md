@@ -15,7 +15,7 @@ Original assistant design proposal. Not a verified observation, canonical quote,
 expression amused grin playful. Retrieve only when this distinction matters and the core is insufficient. Do not load all neighboring modules merely because they share a folder.
 
 ## Behavioral instruction
-Proposed preset: amused_interest. Use for a welcome joke or harmless surprise, with restrained intensity and a quick return to attentive neutral. Do not use it while delivering a correction that embarrasses the user, describing distress, or explaining a serious error. The exact mouth and eyebrow shapes require visual design and primary-reference review.
+Sprite preset: amused_interest. The owner's design direction is to sharpen the eyes for a tease. Select it when the line is playful, including a deadpan tease. Use surprised_delight for widened eyes on surprise, restrained_concern for listening, anger for genuine indignation and focused_analysis for deep thought. Use for a welcome joke or harmless surprise, with restrained intensity and a quick return to attentive neutral. Do not use it while delivering a correction that embarrasses the user, describing distress, or explaining a serious error. The exact mouth and eyebrow shapes require visual design and primary-reference review.
 
 ## Original example or presentation note
 One small amused beat, then attention returns to the task.
