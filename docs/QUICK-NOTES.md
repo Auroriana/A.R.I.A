@@ -29,14 +29,14 @@ The updated sync agent recognizes the move marker. It archives an unchanged old 
 1. Run `web/supabase/008_quick_notes.sql` in your project's SQL Editor after 007. It uses the same owner UUID as the existing migrations.
 2. Set Vercel server environment variables: `QUICK_WORKER_SECRET`, `ARIA_EMAIL`, and `ARIA_PASSWORD`. The email/password must sign into the existing Supabase owner account. Existing Gemini and Supabase settings are still required. This keeps the owner password in Vercel's server environment; no service-role key is used.
 3. Generate a secret locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Keep it in your password manager and the two secret stores, never in source control.
-4. Deploy the updated `web` app. In Supabase Vault, create secrets named `aria_quick_worker_url` (the production `https://YOUR-HOST/api/quick-worker` URL) and `aria_quick_worker_secret` (the same value as `QUICK_WORKER_SECRET`). Enable Supabase Vault if it is not already available.
+4. Deploy the updated `web` app. In Supabase Vault, create secrets named `aria_quick_worker_url` (the production `https://call-me-capri.vercel.app/api/quick-worker` URL) and `aria_quick_worker_secret` (the same value as `QUICK_WORKER_SECRET`). Enable Supabase Vault if it is not already available.
 5. Run `web/supabase/009_quick_cron.sql`. It enables pg_cron/pg_net and schedules the queue check every minute. Rerunning replaces the named job. An empty queue makes no HTTP request. Only the SQL administrator can execute the tick function.
 6. Open each eligible vault's description dialog, give it a useful description and enable Quick Note filing. All ordinary vaults default off. Unsorted always accepts fallback notes. New cloud vaults need their own local pairing if you want them synced into Obsidian; see `docs/OBSIDIAN-SYNC.md`.
 
 The worker URL must be reachable from Supabase without a Vercel deployment-login page. Keep its bearer-secret check enabled. With the secret loaded into your local environment, a PowerShell smoke check is:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri 'https://YOUR-HOST/api/quick-worker' `
+Invoke-RestMethod -Method Post -Uri 'https://call-me-capri.vercel.app/api/quick-worker' `
   -ContentType 'application/json' `
   -Headers @{ Authorization = "Bearer $env:QUICK_WORKER_SECRET" } -Body '{}'
 ```

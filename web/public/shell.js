@@ -1,3 +1,5 @@
+import {queueJump,clearScan,showScan,stopFlight} from '/scan-path.js';
+import {readChatStream} from '/chat-stream.js';
 import {setExpression} from '/expression.js';
 import {personalityHandoff} from '/personality-handoff.js';
 import {mountCoreSettings} from '/core-settings.js';
@@ -14,7 +16,7 @@ let history=[],signedIn=false,busy=false,cfg,first=true,owner="",currentChat=nul
 const core=mountCoreSettings({api,owner:()=>owner,busy:()=>busy,onWelcome:()=>loadWelcome(owner,true),onArchive:async()=>{await syncHistory(true);archiveError=null;archived.clear();for(const c of [...await listChats(owner)].reverse())archive(c);await archiveQueue;if(archiveError)throw archiveError;await loadVaults();}});
 let archiveQueue=Promise.resolve(),archiveError=null;const archived=new Map();
 function archive(c){const account=owner,snapshot=portableChat(structuredClone(c)),fingerprint=JSON.stringify(snapshot.messages);if(!account||!snapshot.messages.length||archived.get(account+':'+c.id)===fingerprint)return;archiveQueue=archiveQueue.then(async()=>{if(owner!==account)return;const result=await api('history-archive',snapshot);if(result.vault&&![...$('vault').options].some(o=>o.value===result.vault)){const selected=$('vault').value;await loadVaults();$('vault').value=selected;}archived.set(account+':'+snapshot.id,fingerprint)}).catch(e=>{archiveError=e;err('History vault sync failed: '+e.message+' The browser copy is still available.');});}
-function showPersonality(it,m){
+function showPersonality(it,m,animate=true){
  if(m.personalityPending&&!m.personality){
    setStatus(it,'This earlier reply was interrupted.');
    if(m.webContext){
@@ -31,7 +33,7 @@ function showPersonality(it,m){
  md(it.querySelector('.md'),m.personality||m.text);
  it.querySelector('.personality-research')?.remove();
  if(m.personalityResearch){
-   const r=m.personalityResearch,info=el('small','Personality database · '+r.passages.length+' notes');
+   const r=m.personalityResearch,info=el('details'),arrow=el('summary','▸');arrow.setAttribute('aria-label','Personality retrieval details');info.append(arrow,el('pre','Personality database · '+r.passages.length+' notes\n'+r.passages.map(p=>p.path).join('\n')));showScan(r.passages,animate);
    info.className='personality-research';info.title=r.passages.map(p=>p.path).join('\n');it.append(info);
  }
  if(m.citationWarning){const w=el('small','An unrecognized source marker was removed.');w.className='cite-warn';it.append(w);}
@@ -41,7 +43,7 @@ function webPanel(it,m){
  if(m.web){const d=el('details');d.append(el('summary','Web research'));const content=el('div');md(content,m.web.answer);d.append(content);for(const source of m.web.sources){const a=el('a',source.title);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';d.append(a,el('br'));}if(m.web.entryPoint){const frame=el('iframe');frame.title='Google Search suggestions';frame.setAttribute('sandbox','allow-popups allow-popups-to-escape-sandbox');frame.srcdoc=m.web.entryPoint;frame.style.cssText='width:100%;height:120px;border:0';d.append(frame)}panel.append(d)}
  if(m.webRequest&&m.webContext){panel.append(el('p',m.webRequest.question),el('small','Public search: '+m.webRequest.query));const yes=el('button','Search the web'),no=el('button','Not now');panel.append(yes,no);no.onclick=async()=>{m.webRequest=null;webPanel(it,m);await persistChat()};yes.onclick=async()=>{if(busy)return;lockChat(true);chatController=new AbortController();yes.disabled=true;try{const styled=await personalityCall({...m.webContext,approvedWebQuery:m.webRequest.query},chatController.signal);m.edited=Date.now();m.text=styled.answer;m.expression=styled.expression;delete m.personality;m.personalityResearch=styled.personalityResearch;m.citationWarning=styled.citationWarning;m.web=styled.web;m.webRequest=null;m.usage=addUsage(m.usage,styled.usage);m.sources=[...(m.sources||[]).filter(s=>!s.id.startsWith('P')),...(styled.sources||[])];it.querySelectorAll('.refs,.personality-toggle,.cite-warn').forEach(n=>n.remove());refs(it,m.sources);showPersonality(it,m);webPanel(it,m);showUsage(it,m.usage);history=conversationMemory(currentChat.messages);await persistChat()}catch(e){err(e.message);yes.disabled=false}finally{chatController=null;lockChat(false)}};}it.append(panel);
 }
-async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const d=await r.json();if(!r.ok)throw new Error(d.error||'Personality unavailable.');return d;}
+async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal});return readChatStream(r,e=>{if(e.stage==='personality-scan')showScan(e.passages);if(e.stage==='quota-wait'){const it=$('msgs').querySelector('[data-pending]');if(it)setStatus(it,e.message);}});}
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
 const quick=mountQuick($('quick'),{api,confirm:confirmAction,voice:()=>{const s=core.get();return s?.enabled?s.prompts.personality:null;},move:(path,vault,version)=>workspace.move(path,vault,version),open:async(path,vault)=>{tab(true);await workspace.open(path,vault);}});
 async function api(p,b){const r=await fetch('/api/'+p,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
@@ -77,9 +79,9 @@ const key=(v,p)=>(v||'')+'\u0000'+p;
 function box(v){let b=boxes.get(v);if(!b){const w=el('div'),h=el('div',v||'Vault');h.className='vn';b=el('div');b.head=h;w.append(h,b);trail.append(w);boxes.set(v,b)}return b}
 function dir(v,path){if(!path)return box(v);const k=key(v,path);if(dirs.has(k))return dirs.get(k);const i=path.lastIndexOf('/'),par=dir(v,i<0?'':path.slice(0,i)),f=el('div'),h=el('div',path.slice(i+1)),kids=el('div');h.className='fh';kids.className='fk';kids.head=h;f.append(h,kids);par.append(f);dirs.set(k,kids);return kids}
 function file(n){const k=key(n.vault,n.path);let d=nodes.get(k);
- if(d){d.hits++;d.classList.remove('hot');void d.offsetWidth;d.classList.add('hot');d.lastChild.textContent='matched ×'+d.hits;return}
+ if(d){queueJump(d);d.hits++;d.classList.remove('hot');void d.offsetWidth;d.classList.add('hot');d.lastChild.textContent='matched ×'+d.hits;return}
  const i=n.path.lastIndexOf('/'),parent=dir(n.vault,i<0?'':n.path.slice(0,i));
- d=el('div');d.className='fi hot';d.hits=1;d.title=n.title;d.append(el('span',n.path.slice(i+1).replace(/\.md$/i,'')),el('b','matched'));parent.append(d);nodes.set(k,d);
+ d=el('div');d.className='fi hot';d.hits=1;d.title=n.title;d.append(el('span',n.path.slice(i+1).replace(/\.md$/i,'')),el('b','matched'));parent.append(d);nodes.set(k,d);queueJump(d);
  for(let p=parent;p&&p!==trail;p=p.parentElement)p.head?.classList.add('used');d.scrollIntoView({block:'nearest',behavior:'smooth'})}
 function scope(ev){$('cur').textContent=ev.reason||ev.intent;for(const v of ev.vaults){const b=box(v.name);b.head.classList.toggle('skip',v.state!=='search');b.head.dataset.s=v.state==='search'?'searching':v.state==='skip'?'skipped':'not searchable';for(const f of v.folders)dir(v.name,f).head.classList.add('dim')}}
 // After the answer: each note ends as cited, read-but-not-cited, or not read (over the context budget).
@@ -104,14 +106,14 @@ function showUsage(it,usage){
  if(!usage)return;let n=it.querySelector('.token-count');if(!n){n=el('span');n.className='token-count';it.append(n)}
  n.textContent=String(usage.totalTokenCount);n.title=usageTitle(usage);n.setAttribute('aria-label',n.title);
  let details=it.querySelector('.usage-details');if(!details){details=el('details');details.className='usage-details';details.append(el('summary'),el('pre'));it.append(details)}
- details.firstChild.textContent=`Tokens: ${usage.estimated?'~':''}${usage.totalTokenCount.toLocaleString()} total${usage.calls?' · '+usage.calls.length+' model calls':''}`;details.lastChild.textContent=usageDetails(usage);
+ details.firstChild.textContent=String(usage.totalTokenCount);details.firstChild.title=usageTitle(usage);details.firstChild.setAttribute('aria-label','Token report, '+usage.totalTokenCount+' tokens');details.lastChild.textContent=usageDetails(usage);
  $('token-count').textContent=n.textContent;$('token-count').title=n.title;$('token-count').setAttribute('aria-label',n.title);
 }
 function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent=String(estimateQuestion($('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':''),history,files));n.title='Estimated tokens for question, conversation history and attachments. Attachments use a rough allowance of 4096 tokens each.';n.setAttribute('aria-label',n.title);}
 $('q').addEventListener('input',estimateDraft);
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
-function reset(){setExpression('neutral_attention');showWelcome();history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';estimateDraft()}
+function reset(){clearScan();setExpression('neutral_attention');showWelcome();history=[];$('msgs').replaceChildren();$('welcome').hidden=false;err('');nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';estimateDraft()}
 const GEM='<svg viewBox="0 0 24 24"><path d="M12 2c.5 5.5 4.5 9.5 10 10-5.5.5-9.5 4.5-10 10-.5-5.5-4.5-9.5-10-10 5.5-.5 9.5-4.5 10-10z"/></svg>',DS='<svg viewBox="0 0 24 24"><path d="M2 14c0-4 4-8 10-8 4 0 7 2 8 5l2-2-.5 6c-1 3-5 5-10 5-5 0-9.5-2-9.5-6z"/><circle cx="9" cy="12" r=".8"/></svg>';
 function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.className='pg';g.innerHTML=GEM+'GEMINI';p.append(g);
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
@@ -124,9 +126,9 @@ $('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode
 $('mp').onclick=()=>{if(cfg)$('pm').hidden=!$('pm').hidden};
 $('pm').onclick=e=>{const b=e.target.closest('.po');if(!b)return;$('model').value=b.dataset.id;buildModels();upd();$('pm').hidden=true};
 document.addEventListener('click',e=>{if(!e.target.closest('.pick'))$('pm').hidden=true});
-$('pt').onclick=()=>$('app').classList.toggle('pt');
+$('pt').onclick=()=>{if($('app').classList.toggle('pt'))$('app').classList.add('hc');};
 $('skip').onclick=()=>$('login').close();
-$('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{await acct((await api('login',{email:$('email').value,password:$('pw').value})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
+$('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{await acct((await api('login',{email:$('email').value,password:$('pw').value,remember:$('remember-device').checked})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
 $('out').onclick=async()=>{try{await api('logout',{});signedIn=false;welcomeLines=[];reset();workspace.clear();quick.clear();owner='';core.clear();currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 
@@ -139,7 +141,7 @@ async function openChat(id){if(busy)return;const c=(await listChats(owner)).find
 async function removeChat(id){if(busy||!await confirmAction('Delete this conversation on your devices? Its History vault archive remains available.','Delete'))return;await deleteChat(owner,id);scheduleSync();if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
 async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);scheduleSync();archive(currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
 function displayChat(c){reset();currentChat=c;$('mode').value=c.mode||'general';$('mc').classList.toggle('on',c.mode!=='vault');$('mv').classList.toggle('on',c.mode==='vault');$('vault').hidden=c.mode!=='vault';$('vault').value=c.vault||'all';if(cfg.models.some(m=>m.id===c.model))$('model').value=c.model;buildModels();upd();
- for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);showPersonality(it,m);webPanel(it,m);}}
+ for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);showPersonality(it,m,false);webPanel(it,m);}}
  history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume reply';estimateDraft();
 }
 let syncTimer,syncRunning=false;
@@ -170,7 +172,7 @@ function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp'
 $('pause-chat').onclick=()=>chatController?.abort();
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
- const pending=currentChat.pending,it=msg('model','');setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
+ const pending=currentChat.pending,it=$('msgs').querySelector('[data-pending]')||msg('model','');it.dataset.pending='true';clearScan();setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
  const body=pending.body,signal=chatController.signal;
  showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(body.message,body.history,body.files),estimated:true});
  try{
@@ -210,7 +212,7 @@ async function runPending(){
      text:reply.answer,expression:reply.expression,sources:[...extraSources,...(reply.sources||[])],personalityResearch:reply.personalityResearch,
      citationWarning:reply.citationWarning,usage,followupCache,web:reply.web,webRequest:reply.webRequest,
      ...(reply.webRequest?{webContext}:{})};
-   currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);
+   delete it.dataset.pending;currentChat.messages.push(saved);currentChat.pending=null;history=conversationMemory(currentChat.messages);
    showPersonality(it,saved);refs(it,saved.sources);webPanel(it,saved);showUsage(it,usage);cool();await persistChat();
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setExpression('neutral_attention');setStatus(it,'Reply paused: '+message);err(message+' Your progress is saved. Use Resume reply to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
@@ -249,7 +251,7 @@ function ask(label,val=''){return new Promise(ok=>{const d=$('ask');let v=null;$
 function confirmAction(label,okText='Confirm'){return new Promise(ok=>{const d=$('ask');let v=false;$('al').textContent=label;$('av').hidden=true;$('ao').textContent=okText;
  d.onclose=()=>{$('av').hidden=false;$('ao').textContent='OK';ok(v)};$('af').onsubmit=e=>{e.preventDefault();v=true;d.close()};$('ac').onclick=()=>d.close();d.showModal()})}
 // ---- app views; note drafts are kept independently of chat navigation.
-function tab(n){const q=n==='quick',notes=n===true,other=q||notes;$('ht').hidden=other;$('chat').hidden=other;$('notes').hidden=!notes;$('quick').hidden=!q;$('app').classList.toggle('nm',other);$('tc').classList.toggle('on',!other);$('tn').classList.toggle('on',notes);$('tq').classList.toggle('on',q);window.history.replaceState(null,'',location.pathname+location.search+(other?(q?'#quick':'#notes'):''));if(notes&&signedIn)workspace.refresh().catch(e=>err(e.message));if(q&&signedIn)quick.refresh();}
+function tab(n){stopFlight();const q=n==='quick',notes=n===true,other=q||notes;const face=$('capri-face');(other?document.querySelector('header'):document.querySelector('.chat-history-bar')).append(face);if(other)setExpression(q?'neutral_attention':'focused_analysis');else setExpression(currentChat?.messages.findLast(m=>m.role==='model')?.expression);$('ht').hidden=other;$('chat').hidden=other;$('notes').hidden=!notes;$('quick').hidden=!q;$('app').classList.toggle('nm',other);$('tc').classList.toggle('on',!other);$('tn').classList.toggle('on',notes);$('tq').classList.toggle('on',q);window.history.replaceState(null,'',location.pathname+location.search+(other?(q?'#quick':'#notes'):''));if(notes&&signedIn)workspace.refresh().catch(e=>err(e.message));if(q&&signedIn)quick.refresh();}
 $('tc').onclick=()=>tab(false);$('tn').onclick=()=>tab(true);$('tq').onclick=()=>tab('quick');
 try{$('concise').checked=localStorage.getItem('aria.mirage')!=='mir';}catch{$('concise').checked=true;}
 $('concise').onchange=()=>{try{localStorage.setItem('aria.mirage',$('concise').checked?'age':'mir');}catch{}};

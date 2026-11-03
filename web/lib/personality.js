@@ -8,7 +8,7 @@ const REF=/\[((?:[SP]\d+)(?:\s*[,;]\s*[SP]\d+)*)\]/g;
 const refs=s=>new Set([...s.matchAll(REF)].flatMap(m=>m[1].match(/[SP]\d+/g)));
 const stripRefs=t=>typeof t==='string'?t.replace(/ ?\[(?:[SP]\d+)(?:\s*[,;]\s*[SP]\d+)*\]/g,''):t;
 const clean=m=>({...m,text:stripRefs(m.text)});
-export async function personalize({body,generate,search,webSearch}){
+export async function personalize({body,generate,search,webSearch,onScan=()=>{}}){
  const settings=settingsOf(body.settings);if(!settings.enabled)return {answer:body.answer||'',sources:[]};
  if(!['ack','rewrite','turn'].includes(body.action)||typeof body.message!=='string'||body.message.length>4000||typeof (body.answer??'')!=='string'||(body.answer?.length||0)>100000||!Array.isArray(body.history??[])||JSON.stringify(body.history??[]).length>180000)throw Object.assign(new Error('Invalid personality request.'),{status:400});
  if(JSON.stringify(body.overview??[]).length>100000)throw Object.assign(new Error('Conversation overview is too large.'),{status:400});
@@ -20,6 +20,7 @@ export async function personalize({body,generate,search,webSearch}){
  const context={recentChats:(body.overview??[]).map(c=>({...c,recent:(c.recent??[]).map(clean)})),question:body.message,conversation,previousAssistantReply,acknowledgment:typeof body.ack==='string'?body.ack.slice(0,4000):'',original:body.answer||'',sourceBasis:body.sourceBasis==='snapshot'?'earlier source snapshots':'draft',snapshotCapturedAt:Number.isFinite(body.snapshotCapturedAt)?body.snapshotCapturedAt:null,citationSources:citationMap(body.answer||'',body.citationSources??[]),vaultsChecked:Number(body.vaultSearches)>0};
  const request=(instruction,data,max=4096,json=false)=>({systemInstruction:{parts:[{text:'Your website name is Capricorn; your preferred conversational name is Capri.\n'+settings.prompts.personality+'\n'+instruction}]},contents:[{role:'user',parts:[{text:JSON.stringify(data)}]}],generationConfig:{maxOutputTokens:max,...(json?{responseMimeType:'application/json'}:{})}});
  const initialPassages=turnPassages(body.message,conversation);
+ onScan(initialPassages.map(passageInfo));
  const samples=dialogueSamples(body.message);
  const researchInfo={method:'local-keyword',searched:true,searches:1,dialogueExamples:samples.map(s=>s.id),passages:initialPassages.map(passageInfo)};
  if(body.action==='turn'){
@@ -72,7 +73,7 @@ export async function personalize({body,generate,search,webSearch}){
   if(exhausted||attempt===PERSONALITY_LIMITS.rounds)throw Object.assign(new Error('Capri requested more personality searches than allowed. Retry the response.'),{status:502});
   if(personalityQueries.some(q=>q.toLowerCase()===query.toLowerCase())){exhausted=true;continue;}
   const hits=searchPersonality(query,{exclude:personalityPassages.map(p=>p.id),remainingCharacters:PERSONALITY_LIMITS.characters-personalityPassages.reduce((n,p)=>n+p.content.length,0)});
-  personalityQueries.push(query);personalityPassages.push(...hits);exhausted=personalityQueries.length>=PERSONALITY_LIMITS.rounds||hits.length===0;
+  personalityQueries.push(query);personalityPassages.push(...hits);onScan(personalityPassages.map(passageInfo));exhausted=personalityQueries.length>=PERSONALITY_LIMITS.rounds||hits.length===0;
  }
  let expression='neutral_attention';
  if(body.sprite&&!result.truncated){let parsed;try{parsed=JSON.parse(result.answer.trim().replace(/^```(?:json)?\s*|\s*```$/gi,''));}catch{} expression=expressionOf(parsed?.expression);result={...result,answer:parsed?.answer};}

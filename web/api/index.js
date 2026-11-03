@@ -1,3 +1,4 @@
+import {withPersonalityQuota} from '../lib/personality-quota.js';
 import {cacheFollowup,readFollowup,FOLLOWUP_ROUTING} from '../lib/followup-cache.js';
 import {webSearch} from '../lib/web-search.js';
 import {coreModels,defaults,settingsOf,legacyPersonality,legacyPersonalities} from '../lib/core-settings.js';
@@ -23,11 +24,33 @@ const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const configured=()=>['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','OWNER_USER_ID'].every(k=>process.env[k]);
 async function sb(route,token,body,method=body?'POST':'GET') {
   const response=await fetch(`${process.env.SUPABASE_URL}${route}`,{method,headers:{apikey:process.env.SUPABASE_PUBLISHABLE_KEY,...(token?{Authorization:`Bearer ${token}`} : {}),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
-  if(!response.ok) throw fail(route.includes('/auth/')?'Sign-in failed or session expired.':'Database request failed. Apply the Supabase migration and check access policies.',route.includes('/auth/')?401:503);
-  return response.status===204?null:response.json();
+  if(!response.ok) throw fail(route.includes('/auth/')?'Sign-in failed or session expired.':'Database request failed. Apply the Supabase migration and check access policies.',route.includes('/auth/')&&[400,401,403,422].includes(response.status)?401:503);
+  return response.status===204||route.startsWith('/auth/v1/logout')?null:response.json();
 }
-function cookie(req){return (req.headers.cookie??'').split(';').map(v=>v.trim()).find(v=>v.startsWith('aria_session='))?.slice(13);}
-function setCookie(res,value,age){res.setHeader('Set-Cookie',`aria_session=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${process.env.VERCEL?'; Secure':''}`);}
+function cookie(req,name){
+  const prefix=name+'=';
+  return (req.headers.cookie??'').split(';').map(v=>v.trim()).find(v=>v.startsWith(prefix))?.slice(prefix.length);
+}
+function sessionCookies(res,session,remember){
+  const flags='; HttpOnly; SameSite=Strict'+(process.env.VERCEL?'; Secure':'');
+  const refresh=remember&&session?.refresh_token;
+  res.setHeader('Set-Cookie',[
+    'aria_session='+(session?.access_token||'')+'; Path=/; Max-Age='+(session?Math.min(session.expires_in??3600,3600):0)+flags,
+    'capri_refresh='+(refresh||'')+'; Path=/api; Max-Age='+(refresh?30*86400:0)+flags
+  ]);
+}
+async function sessionFor(req,res){
+  const token=cookie(req,'aria_session'),refresh=cookie(req,'capri_refresh');
+  if(token){
+    try{return {token,user:await sb('/auth/v1/user',token)};}
+    catch(e){if(e.status!==401||!refresh)throw e;}
+  }
+  if(!refresh)throw fail('Sign in to continue.',401);
+  const session=await sb('/auth/v1/token?grant_type=refresh_token',null,{refresh_token:refresh});
+  if(session.user?.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
+  sessionCookies(res,session,true);
+  return {token:session.access_token,user:session.user};
+}
 async function readBody(req,limit=40000){
   if(req.body) {if(Buffer.byteLength(JSON.stringify(req.body))>limit)throw fail('Request too large.',413);return typeof req.body==='string'?JSON.parse(req.body):req.body;}
   let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>limit)throw fail('Request too large.',413);}return raw?JSON.parse(raw):{};
@@ -61,9 +84,16 @@ export default async function handler(req,res){
       if(typeof body.email!=='string'||typeof body.password!=='string'||body.email.length>320||body.password.length>1024)throw fail('Email and password required.');
       const session=await sb('/auth/v1/token?grant_type=password',null,{email:body.email,password:body.password});
       if(session.user?.id!==process.env.OWNER_USER_ID)throw fail('This account does not have access to Capri.',403);
-      setCookie(res,session.access_token,Math.min(session.expires_in??3600,3600));return send(200,{email:session.user.email});
+      sessionCookies(res,session,body.remember===true);return send(200,{email:session.user.email});
     }
-    if(req.method==='POST'&&route==='/api/logout'){setCookie(res,'',0);return send(200,{ok:true});}
+    if(req.method==='POST'&&route==='/api/logout'){
+      try{
+        const {token,user}=await sessionFor(req,res);
+        if(user.id===process.env.OWNER_USER_ID)await sb('/auth/v1/logout?scope=local',token,{},'POST');
+      }catch(e){if(e.status!==401)throw e;}
+      finally{sessionCookies(res,null,false);}
+      return send(200,{ok:true});
+    }
     if(req.method==='POST'&&route==='/api/quick-worker'){
       if(!workerAuthorized(req.headers.authorization,process.env.QUICK_WORKER_SECRET))throw fail('Access denied.',403);
       if(!process.env.ARIA_EMAIL||!process.env.ARIA_PASSWORD)throw fail('Quick Note worker credentials are not configured.',503);
@@ -71,24 +101,29 @@ export default async function handler(req,res){
       if(session.user?.id!==process.env.OWNER_USER_ID)throw fail('Worker account does not own Capri.',403);
       await quickRoutes({req,route,url:new URL(req.url,'http://localhost'),token:session.access_token,sb,fail,send,readBody,generate:gemini});return;
     }
-    const token=cookie(req);if(!token)throw fail('Sign in to continue.',401);
-    const user=await sb('/auth/v1/user',token);
+    const {token,user}=await sessionFor(req,res);
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/core-settings')return send(200,{defaults,legacyPersonality,legacyPersonalities,models:coreModels,claudeReady:!!process.env.ANTHROPIC_API_KEY&&process.env.CLAUDE_API_ENABLED==='true'});
     if(await chatRoutes({req,route,token,sb,send,fail,readBody,generate:gemini,model:PLANNER_MODEL}))return;
     if(req.method==='POST'&&route==='/api/history-archive')return send(200,await archiveChat(await readBody(req,12000000),{sb,token}));
     if(req.method==='POST'&&route==='/api/personality'){
       const body=await readBody(req,600000),settings=settingsOf(body.settings);let usage={totalTokenCount:0,estimated:false,ragSearches:0,semanticSearches:0,embeddingCalls:0,embeddingTokensEstimated:0,retrievalMs:0};
+      if(req.headers.accept?.includes('application/x-ndjson')){streaming=true;res.setHeader('Content-Type','application/x-ndjson');res.flushHeaders?.();res.on?.('close',disconnect);heartbeat=setInterval(()=>emit('heartbeat',{}),10000);}
+      const retryDeadline=Date.now()+135000;
       const generate=async (request,{phase=body.action}={})=>{
         const started=Date.now();
         let result;
         if(settings.personality.startsWith('claude-'))result=await claude(settings.personality,request);
-        else{if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled.',503);const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:settings.personality,p_tokens:Buffer.byteLength(JSON.stringify(request))+request.generationConfig.maxOutputTokens});if(!ok)throw fail('Personality model quota reached.',429);result=await gemini(settings.personality,request);}
+        else{if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini is not enabled.',503);result=await withPersonalityQuota(request,{
+          reserve:tokens=>sb('/rest/v1/rpc/aria_reserve',token,{p_model:settings.personality,p_tokens:tokens}),
+          generate:input=>gemini(settings.personality,input),signal:generationController.signal,deadline:retryDeadline,
+          onWait:streaming?()=>emit('progress',{stage:'quota-wait',message:'Waiting for the model quota window. Retrying this step in one minute…'}):null
+        });}
         usage=addUsage(usage,callUsage(result.usage,request,result.answer,{model:settings.personality,role:'personality',phase,latencyMs:Date.now()-started}));return result;
       };
       const search=async query=>{const started=Date.now();const rows=await sb('/rest/v1/rpc/aria_search',token,{p_query:keywordQuery(query),p_embedding:null,p_vault:null});usage.ragSearches++;usage.retrievalMs+=Date.now()-started;return rows;};
       const searchWeb=async query=>{if(!process.env.GEMINI_API_KEY||process.env.GEMINI_FREE_TIER_CONFIRMED!=='true')throw fail('Gemini web search is not configured.',503);const result=await webSearch(query,{generate:async(model,request)=>{const started=Date.now(),result=await gemini(model,request);usage=addUsage(usage,callUsage(result.usage,request,result.answer,{model,role:'web',phase:'grounding',latencyMs:Date.now()-started}));return result;},reserve:async(model,tokens)=>{if(!await sb('/rest/v1/rpc/aria_reserve',token,{p_model:model,p_tokens:tokens}))throw fail('Web search model quota reached.',429);}});return result;};
-      const result=await personalize({body,generate,search,webSearch:searchWeb});return send(200,{...result,usage});
+      const result=await personalize({body,generate,search,webSearch:searchWeb,onScan:passages=>{if(streaming)emit('progress',{stage:'personality-scan',passages});}});return send(200,{...result,usage});
     }
     if(req.method==='GET'&&route==='/api/session')return send(200,{email:user.email});
     if(await quickRoutes({req,route,url:new URL(req.url,'http://localhost'),token,sb,fail,send,readBody,generate:gemini}))return;
@@ -177,7 +212,7 @@ export default async function handler(req,res){
       if(use==='gemini-3.8-flash')request={...request,generationConfig:{...request.generationConfig,maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'low'}}};
       // Base64 bytes aren't text tokens. Reserve a conservative per-attachment allowance.
       const textRequest=JSON.stringify(request, (key,value)=>key==='inlineData'?{mimeType:value.mimeType}:value);
-      await reserve(use,Buffer.byteLength(textRequest)+files.length*4096+request.generationConfig.maxOutputTokens);
+      await reserve(use,estimateText(textRequest)+files.length*4096+request.generationConfig.maxOutputTokens);
       const inputEstimate=estimateText(textRequest)+files.length*4096;let outputText='',liveUsage=null;
       const report=()=>onProgress({stage:'usage',usage:addUsage(tokenUsage,normalizeUsage(liveUsage,inputEstimate+estimateText(outputText)))});
       report();

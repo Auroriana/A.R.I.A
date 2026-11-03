@@ -1,0 +1,60 @@
+#lf .remember-device{display:flex;align-items:center;gap:8px;color:#b8ccce;font-size:12px}#lf .remember-device input{width:auto;accent-color:#37ff81}
+/* Shared art direction across chat, the vault, imports and editing surfaces. */
+:root{--ink:#050a16;--panel:#0a1020;--line:#2a3245;--laser:#37ff81;--spark:#ff2357;--mist:#aab5c8;color-scheme:dark}
+html,body{background:var(--ink);color:#e6f0ff}body{background-image:linear-gradient(145deg,#071020dc,#080d1af2),url(/capri-sky.svg);background-size:cover;background-attachment:fixed}
+#app>header,body>header,.notes>aside,.notes>main>header{background:linear-gradient(100deg,#0d1629,#080e1b 62%,#221225);border-color:#283348}
+#app .logo,.brand{color:var(--laser);text-shadow:2px 1px #202467;letter-spacing:.32em}
+#app header nav{gap:4px}#app header .mb,.modes .mb,.pick>.mb{border-color:#32364e;background:#0a1020}#app header .on,.modes .on{color:var(--laser);box-shadow:inset 0 -2px var(--laser)}
+#hist,#app>aside,.file-explorer,.notes aside,.note-tabs,body>main>aside{background:linear-gradient(165deg,#101627,#070c18 60%);border-color:var(--line)}
+#hist:before,#app>aside h4,.welcome-code,.ambience,.scope-title{font:700 10px/1.6 ui-monospace,monospace;letter-spacing:.19em;text-transform:uppercase}
+#hist:before{content:'01   /   TRANSMISSIONS';padding:21px 15px 0;color:#94acbf}
+#new-chat,#send,.primary-btn,.quick-controls button[type=submit]{color:#001b12;background:var(--laser);border-color:var(--laser);font-weight:750}
+.hist-row.on>button:first-child,#tree button[aria-current=true]{border-left:2px solid var(--laser);background:#112624;color:#d9ffeb}
+#chat{position:relative;background:linear-gradient(180deg,#080c170a,#080d1a 90%)}#chat .scroll{position:relative;isolation:isolate}
+#chat .scroll:before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(0deg,#090e1b 0%,#0a102099 40%,#0a102033),url(/capri-sky.svg) center 35%/cover;opacity:.59}
+#chat:has(#welcome[hidden]) .scroll:before{opacity:.13}
+#welcome{position:relative;max-width:620px;margin:clamp(20px,7vh,90px) auto;text-align:left;padding:clamp(20px,4vw,54px);background:linear-gradient(115deg,#091020ed,#0b0d1b86);border-left:3px solid var(--laser);border-bottom:1px solid #dc2d5f69}
+.welcome-code{color:var(--laser)}#welcome h1{font:900 italic clamp(42px,6.8vw,96px)/.94 system-ui,sans-serif;letter-spacing:-.075em;margin:14px 0 22px;text-shadow:3px 2px #ac1647;color:#f4f4ff}
+#welcome #gr{font:500 clamp(16px,2vw,24px)/1.4 system-ui,sans-serif;letter-spacing:0;text-transform:none;color:#deebf4}.ambience{margin-top:20px;color:#95a6be}
+#capri-face{position:relative;display:flex;align-items:center;justify-content:center;width:82px;height:45px;gap:0;z-index:2;animation:float-capri 6s ease-in-out infinite;transition:translate .65s ease}
+#capri-face i,.scan-eye{display:inline-block;border-radius:0;background:transparent url(/capri-eye.svg) center/contain no-repeat;width:45px;height:40px;filter:drop-shadow(0 2px 2px #030413);transition:transform .22s}
+#capri-face i:first-child{rotate:9deg;scale:.81}#capri-face i:last-child{rotate:-9deg;margin-left:-4px}
+#chat:has(#welcome:not([hidden])) #capri-face{position:absolute;top:clamp(20px,5vh,65px);right:8%;scale:1.65}
+#capri-face[data-expression=amused_interest] i{transform:skew(-13deg) scaleY(.73)}#capri-face[data-expression=surprised_delight] i{height:40px;transform:scaleY(1.17)}#capri-face[data-expression=anger] i{filter:drop-shadow(0 0 3px #ff285d)}
+.chat-history-bar{min-height:36px;background:#080e1bbd;border-color:#253042}#app>aside h4{color:var(--laser);margin-bottom:18px}#app>aside h4:before{content:'03   /   ';color:#7587a3}
+#app>aside{position:relative;overflow:auto}.scope-title{color:#ff829f;margin:12px 0 8px}.scan-row{position:relative;padding:8px 3px 8px 29px;font:11px/1.45 ui-monospace,monospace;color:#cbd8e9;border-bottom:1px solid #232a3c;overflow-wrap:anywhere;animation:signal-in .34s both}.scan-eye{width:23px;height:20px;position:absolute;left:0;top:6px}.jump-wire{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9;overflow:hidden}.jump-wire path{stroke:#ff3465;fill:none;stroke-width:2.7;filter:drop-shadow(0 0 4px #ff164f);animation:arc-fade .7s forwards}
+#msgs .m{border-color:var(--line);padding:18px 12px}.m.model .who{color:var(--laser)}.m.user .who{color:#ff7196}.m.model{background:linear-gradient(115deg,#111929ab,transparent)}#chat footer,dialog,.quick-workspace,.note-content,#note-rendered,.import-scroll{color:#e0eaf6;background:#0b1120;border-color:var(--line)}
+#chat #f{background:#10182a;border:1px solid #394256;border-left:3px solid var(--spark);padding:10px 14px}#q{background:transparent}button,summary,a{transition:color .16s,background-color .16s,box-shadow .16s}button:hover:not(:disabled),summary:hover{color:var(--laser);box-shadow:inset 0 -1px var(--laser)}button:focus-visible,a:focus-visible{outline:2px solid var(--laser)}
+.usage-details summary,.personality-research summary{font-size:11px;color:#aabbd0;cursor:pointer}.usage-details summary{list-style:none}.usage-details summary::-webkit-details-marker{display:none}.personality-research{display:block}.personality-research pre{white-space:pre-wrap}.fi.hot,.scan-row:last-child{border-left:2px solid var(--spark)}.nav.active,.note-tab.active,.quick-pill{color:var(--laser);background:#15272b}
+body>header:not(#app header){background:linear-gradient(90deg,#070b19d9,#180a2099),url(/capri-sky.svg) center/cover}body>header h1,.quick-workspace h1,.notes h1{color:#eafff1}
+@keyframes float-capri{50%{transform:translate(8px,-3px) rotate(-3deg)}}@keyframes arc-fade{0%{stroke-dasharray:1 900;opacity:0}30%{stroke-dasharray:900 0;opacity:1}100%{opacity:0}}
+@keyframes signal-in{from{opacity:.2;transform:translateX(-5px);text-shadow:3px 0 #ff2860}to{opacity:1;transform:none}}.m.model .who,.scope-title,#welcome h1{animation:signal-in .45s both}
+@media(max-width:860px){#app>aside{position:fixed}#app header{gap:2px;padding:0 7px}#app header .mb{padding:4px}.logo{font-size:11px}#chat:has(#welcome:not([hidden])) #capri-face{right:15%;scale:1.15}#welcome{margin-top:50px}}
+
+/* The scope keeps a quiet beat between searches. It accelerates when real
+   records arrive. Reading surfaces stay still while their edges respond. */
+.path-scope{height:112px;position:relative;overflow:hidden;border:1px solid #354051;background:linear-gradient(135deg,#152638dd,#160c24dd),url(/capri-sky.svg) center/cover;margin-bottom:18px}
+.path-scope:before,.path-scope:after{content:'';position:absolute;left:50%;top:40%;width:86px;height:39px;border:1px solid #65978f;border-radius:50%;transform:translate(-50%,-50%) rotate(-23deg)}
+.path-scope:after{transform:translate(-50%,-50%) rotate(40deg);width:70px;height:36px;border-color:#a73159}
+.path-scope i{position:absolute;left:calc(50% - 19px);top:calc(40% - 15px);width:38px;height:30px;background:url(/capri-eye.svg) center/contain no-repeat;animation:optic-drift 9s ease-in-out infinite}
+.path-scope b{position:absolute;inset:0;background:linear-gradient(90deg,transparent,#80ffaf18,transparent);animation:sweep 6s infinite linear}.path-scope span{position:absolute;bottom:8px;left:12px;font:9px monospace;color:#92b0ac;letter-spacing:.14em}
+#pt.scan-active{box-shadow:0 0 12px #ff235770;color:var(--laser)}#app>aside:has(.scan-row) .path-scope b{animation-duration:2s}
+#chat .scroll:before{animation:star-drift 30s ease-in-out infinite alternate}
+#capri-face:after{content:'';position:absolute;inset:16% 1%;background:linear-gradient(transparent 40%,#33fc9340 41% 44%,transparent 46%);opacity:0;animation:optic-glitch 7s infinite}
+#capri-face i{animation:optic-drift 11s ease-in-out infinite}#capri-face i:last-child{animation-delay:-.06s}
+#chat:has(#welcome:not([hidden])) #capri-face{animation:roam 19s ease-in-out infinite}
+#hist,#app>aside{background-image:linear-gradient(175deg,#101727e8,#050b19f7),url(/capri-sky.svg);background-size:cover}
+#new-chat:hover:not(:disabled),#send:hover:not(:disabled){color:#071710;background:#94ffb5}
+#app .file-explorer,#app .note-tabs,#app .quick-workspace,.import-scroll{border-color:#344156}
+#app .note-tab,#app .quick-pill,#chat-history .hist-row,#tree details[open]>div,.quick-workspace h1,.note-reading h1,.import-scroll h2,dialog[open] form{animation:signal-in .28s both}
+#notes .note-bar,#notes .note-bottom,#quick .quick-controls{background:#0d1422;border-color:#28364c}#notes :is(input,select,textarea),#quick :is(input,textarea),dialog :is(input,select,textarea),.import-scroll :is(input,textarea){background:#070d1a;color:#dce9fa;border-color:#36415b}
+#quick h1,.import-scroll h2,#notes .section-label{border-left:3px solid var(--spark);padding-left:10px}
+#chat #f:focus-within{border-color:#457b69;border-left-color:var(--laser)}
+@keyframes optic-drift{0%,58%,100%{translate:0 0}61%,72%{translate:-2px 1px}76%,89%{translate:1px -1px}}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+@keyframes star-drift{to{background-position:center,52% 40%}}
+@keyframes optic-glitch{0%,90%,93%,100%{opacity:0}91%,92%{opacity:.8;translate:3px 0}}
+@keyframes roam{0%,100%{translate:0 0;rotate:0deg}33%,42%{translate:-38px 5px;rotate:-5deg}70%,80%{translate:8px 22px;rotate:4deg}}
+@media(max-width:440px){#app header #out{font-size:0}#app header #out svg{width:14px}.path-scope{height:80px}}
+.satellite-eye{width:51px;height:41px;display:inline-block;float:right;background:url(/capri-eye.svg) center/contain no-repeat;animation:float-capri 7s ease-in-out infinite}#app>header #capri-face{order:-1;width:62px;height:40px}#app>header:has(#capri-face)>div{margin-right:auto}#app.nm .file-explorer,.import-scroll,.quick-workspace{background-image:linear-gradient(180deg,#0a1020bc,#0a1020fc 200px),url(/capri-sky.svg);background-size:cover}.quick-workspace h1:before,.import-scroll:before{display:block;font:10px/2 monospace;letter-spacing:.18em;color:var(--laser)}.quick-workspace h1:before{content:'CAPRI   /   CAPTURE'}.import-scroll:before{content:'CAPRI   /   INGEST'}.quick-workspace:focus-within h1,.import-scroll:focus-within:before{animation:signal-in .4s both}#app header:has(#capri-face){justify-content:flex-start}#app header:has(#capri-face) nav{margin-left:auto}@media(max-width:600px){#app>header #capri-face{width:28px}#app>header #capri-face i{width:20px}#app>header #capri-face i:first-child{display:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.jump-wire{display:none}}

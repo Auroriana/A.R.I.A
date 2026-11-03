@@ -1,7 +1,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import handler from './api/index.js';
-const types={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'};
 const port=Number(process.env.PORT??3000);
 const server=http.createServer(async(req,res)=>{
  if(req.url.startsWith('/api/'))return handler(req,res);
@@ -17,4 +17,4 @@ server.on('error',error=>{
  else console.error(`Could not start Aria: ${error.code??'unknown error'}`);
  process.exitCode=1;
 });
-server.listen(port,'127.0.0.1',()=>console.log(`Aria: http://127.0.0.1:${port}`));
+server.listen(port,'127.0.0.1',()=>console.log(`Aria: http://127.0.0.1:${server.address().port}`));
