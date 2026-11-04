@@ -9,8 +9,6 @@ function jump(target){
  const svg=document.createElementNS(ns,'svg'),path=document.createElementNS(ns,'path');svg.setAttribute('class','jump-wire');svg.setAttribute('aria-hidden','true');
  path.setAttribute('d',`M ${x} ${y} L ${x+(a-x)*.46+11} ${y+(b-y)*.4} l -9 9 15 -2 L ${a} ${b} l -7 -4`);
  svg.append(path);document.body.append(svg);setTimeout(()=>svg.remove(),750);
- const face=document.querySelector('#capri-face');
- if(innerWidth>860&&face.animate){const r=face.getBoundingClientRect();face.getAnimations().filter(a=>a.id==='scan-flight').forEach(a=>a.cancel());face.animate([{translate:'0 0'},{translate:`${a-r.right}px ${b-r.top}px`,offset:.48,scale:'.55'},{translate:'0 0'}],{id:'scan-flight',duration:650,easing:'ease-out'});}
 }
 function next(){if(!queue.length){timer=null;document.querySelector('#pt').classList.remove('scan-active');return;}jump(queue.shift());timer=setTimeout(next,230);}
 export function queueJump(target){queue.push(target);queue=queue.slice(-14);if(!timer)next();}

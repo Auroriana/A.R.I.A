@@ -1,10 +1,10 @@
-# A.R.I.A.
+# Capri
 
-**Ataraxia: Retrieval & Indexing Augmentation**
+**Call me Capri.**
 
 A personal knowledge and research assistant that turns Markdown notes into searchable, cited answers—with a workspace for reading, editing, organizing, and capturing information.
 
-ARIA uses **Retrieval-Augmented Generation (RAG)** to find relevant passages from your knowledge base before answering. Your notes remain the reference material; Gemini helps locate, connect, and explain them. Instead of placing the entire collection into every prompt, ARIA builds a focused evidence context for each question.
+Capri uses **Retrieval-Augmented Generation (RAG)** to find relevant passages from your knowledge base before answering. Your notes remain the reference material; Gemini helps locate, connect, and explain them. Instead of placing the entire collection into every prompt, Capri builds a focused evidence context for each question.
 
 Built for a personal Obsidian workflow, with a browser interface backed by Supabase and a Node.js API configured for Vercel.
 
@@ -14,7 +14,7 @@ Built for a personal Obsidian workflow, with a browser interface backed by Supab
 
 - Ask questions about approved notes and inspect the source passages behind an answer.
 - Research questions that require several searches, procedures, or documents.
-- Search one vault or let ARIA work across available vaults.
+- Search one vault or let Capri work across available vaults.
 - Read and edit Markdown in a folder-based workspace with links and tabs.
 - Capture rough information through Quick Note and have an organized copy filed for review.
 - Pair cloud vaults with local Obsidian folders through the supplied sync agent.
@@ -26,13 +26,13 @@ Built for a personal Obsidian workflow, with a browser interface backed by Supab
 
 **General chat** is a normal assistant conversation. **Search my notes** retrieves evidence from your approved knowledge base before generating an answer.
 
-Vault answers include source references and formatted excerpts. ARIA checks that cited source IDs exist in the evidence actually supplied to the final model. This prevents nonexistent source references; it does not independently prove that every cited claim is correct.
+Vault answers include source references and formatted excerpts. Capri checks that cited source IDs exist in the evidence actually supplied to the final model. This prevents nonexistent source references; it does not independently prove that every cited claim is correct.
 
-The answer prompts ask ARIA to distinguish source evidence, facts supplied by the user, and its own suggestions. They also ask it to flag conflicting notes, missing information, and relevant discrepancies in a case.
+The answer prompts ask Capri to distinguish source evidence, facts supplied by the user, and its own suggestions. They also ask it to flag conflicting notes, missing information, and relevant discrepancies in a case.
 
 ### Adaptive research
 
-ARIA can change its research depth to match the question:
+Capri can change its research depth to match the question:
 
 1. A small-model router classifies the request as a vault overview, direct lookup, or more involved case.
 2. It chooses search terms and relevant vaults using vault descriptions and folder information.
@@ -75,7 +75,7 @@ Moving a note preserves its ID and updates its search chunks. Existing path-base
 
 Paste Import keeps the original body unchanged. Large imports split at existing line breaks into numbered notes. Saved content is read back and compared with the submitted text.
 
-Optional AI formatting adds validated positional layout hints rather than asking the model to rewrite the body. These hints live in `aria_format` frontmatter. Obsidian preserves that metadata, but interpreting ARIA-specific layouts there would require a plugin.
+Optional AI formatting adds validated positional layout hints rather than asking the model to rewrite the body. These hints live in `aria_format` frontmatter. Obsidian preserves that metadata, but interpreting Capri-specific layouts there would require a plugin.
 
 Inputs that cannot be stored unchanged are rejected instead of silently modified.
 
@@ -132,7 +132,7 @@ The frontend uses **plain JavaScript, HTML, and CSS**. The backend and local too
 ### Run locally
 
 ```bash
-git clone https://github.com/Auroriana/A.R.I.A.git
+git clone https://github.com/Auroriana/Caprigit
 cd A.R.I.A
 ```
 
@@ -162,7 +162,7 @@ For Vercel, use `web` as the root directory, **Other** as the framework preset, 
 
 ## Privacy and usage controls
 
-ARIA is designed for one owner. Protected API requests check the owner's identity, and browser sessions use HttpOnly cookies. Model credentials stay on the server. Normal browser API calls stay on the website's origin.
+Capri is designed for one owner. Protected API requests check the owner's identity, and browser sessions use HttpOnly cookies. Model credentials stay on the server. Normal browser API calls stay on the website's origin.
 
 Vault search is restricted to approved, AI-enabled material and the permitted vault scope. Quota reservations precede model calls, and the current configuration does not automatically fall back to a paid provider. DeepSeek is disabled in this release.
 

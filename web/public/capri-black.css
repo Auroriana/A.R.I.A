@@ -1,0 +1,19 @@
+html,body,#app,#chat,#hist,#app>aside{background-color:#010205}
+#app>header,#chat footer,#chat .chat-history-bar{background:#020306}
+#hist,#app>aside{background-image:linear-gradient(#010207f0,#000),url(/capri-sky.svg)}
+#chat .scroll:before{opacity:.34}
+#welcome{background:linear-gradient(110deg,#000e,#020408c9);border-left:0;border-top:2px solid #ff003c}
+#welcome h1{text-shadow:3px 0 #ff003c;font-style:normal;letter-spacing:-.055em}
+.capri-avatar{width:64px;height:64px;object-fit:cover;border:1px solid #0f6;display:block;margin-bottom:20px}
+#capri-face,#chat:has(#welcome:not([hidden])) #capri-face{animation:none;rotate:0deg;translate:0 0;gap:0;scale:1;width:108px;height:60px}
+#capri-face i:first-child{display:block;width:108px;height:60px;rotate:0deg;scale:1;animation:none;background:url(/capri-eye.svg) center/contain no-repeat}
+#capri-face i:last-child{display:none}
+#capri-face[data-expression=focused_analysis]:before,#capri-face[data-expression=focused_analysis]:after{content:'';display:block;position:absolute;width:30px;height:17px;background:url(/capri-eye.svg) center/cover;top:4px;opacity:1;animation:none}
+#capri-face[data-expression=focused_analysis]:before{left:0}#capri-face[data-expression=focused_analysis]:after{right:0;inset:auto 0 4px auto}
+#capri-face[data-expression=amused_interest] i{clip-path:polygon(0 18%,100% 0,100% 80%,0 100%);transform:none}
+#capri-face[data-expression=surprised_delight] i{transform:scaleY(1.1);height:60px}
+#capri-face[data-expression=anger] i{clip-path:polygon(0 0,50% 24%,100% 0,100% 100%,0 100%)}
+#app>header #capri-face{width:60px;height:33px}#app>header #capri-face i:first-child{display:block;width:60px;height:33px}
+.m>.refs{float:right;max-width:100%;margin:3px 0 5px 14px}.m>.refs[open]{float:none;width:100%;margin-left:0}.m:after{content:'';display:block;clear:both}
+.m>.refs summary{font-size:10px;color:#94b4a1}
+#chat #f,.quick-workspace,.note-content,#note-rendered,.import-scroll,dialog{background-color:#030509}

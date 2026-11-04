@@ -109,13 +109,13 @@ test('keywordQuery drops filler words and expands family and date wordings',()=>
 
 const vaultsMap=[{name:'Lumina Records',description:'Personal records',topFolders:['00 Max Level Clearance'],searchable:true},{name:'Insurance',description:'Procedures',topFolders:['Policies'],searchable:true}];
 
-test('router sends a lookup straight to the answer with no gap-check call',async()=>{
+test('router checks whether lookup passages actually answer the question',async()=>{
   const phases=[],searches=[],events=[];
   const route={answer:JSON.stringify({intent:'lookup',queries:[{q:'mother birthday born',vault:'Lumina Records'}],reason:'personal fact'})};
   const result=await researchVault({message:'When is my moms birthday?',route:true,overview:async()=>vaultsMap,onProgress:e=>events.push(e),
     search:async(q,o)=>{searches.push({q,...o});return [passage(1)];},
-    generate:async(request,meta)=>{phases.push(meta?.phase??'answer');return meta?.phase==='route'?route:{answer:'Born on a date [S1].'};}});
-  assert.deepEqual(phases,['route','answer']);
+    generate:async(request,meta)=>{phases.push(meta?.phase??'answer');return meta?.phase==='route'?route:meta?.phase==='planning'?{answer:'{"queries":[]}'}:{answer:'Born on a date [S1].'};}});
+  assert.deepEqual(phases,['route','planning','answer']);
   assert.equal(searches.length,1);assert.equal(searches[0].vault,'Lumina Records');assert.equal(searches[0].initial,false);
   assert.equal(result.sources[0].cited,true);
   const scope=events.find(e=>e.stage==='scope');

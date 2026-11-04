@@ -1,3 +1,4 @@
+import {setTimeout as quotaDelay} from 'node:timers/promises';
 import {withPersonalityQuota} from '../lib/personality-quota.js';
 import {cacheFollowup,readFollowup,FOLLOWUP_ROUTING} from '../lib/followup-cache.js';
 import {webSearch} from '../lib/web-search.js';
@@ -191,7 +192,7 @@ export default async function handler(req,res){
     if(streaming){deadlineTimer=setTimeout(()=>generationController.abort('deadline'),270000);res.on?.('close',disconnect);}
     let generationId=0,tokenUsage={totalTokenCount:0,estimated:false,ragSearches:0,semanticSearches:0,embeddingCalls:0,embeddingTokensEstimated:0,retrievalMs:0};
     const onProgress=event=>{if(streaming)emit('progress',event);};
-    const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok)throw fail('Model quota reservation limit reached. Wait before trying again. No automatic retries or paid fallback.',429);};
+    const reserve=async(id,tokens)=>{const ok=await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens});if(!ok){if(!streaming)throw fail('Model quota is temporarily unavailable.',429);onProgress({stage:'quota-wait',message:'waitin for a little room… your research is still here~'});await quotaDelay(61000,undefined,{signal:generationController.signal});if(!await sb('/rest/v1/rpc/aria_reserve',token,{p_model:id,p_tokens:tokens}))throw fail('This model is still at its limit. Your research is saved.',429);}};
     const generate=async (request,{phase='answer',round}={})=>{
       const started=Date.now();
       // Routing and planning only emit short JSON, so they run on the light model (own quota, no deep thinking).
@@ -243,6 +244,7 @@ export default async function handler(req,res){
         onProgress({stage:'searching',vault:scope?(rows.find(v=>v.id===String(scope).toLowerCase())?.name??'selected vault'):'all vaults',sent:keywords});
         if(initial&&process.env.ENABLE_SEMANTIC_SEARCH==='true'){await reserve('gemini-embedding-2',Buffer.byteLength(query));vector=await embed(query);tokenUsage.embeddingCalls=(tokenUsage.embeddingCalls||0)+1;tokenUsage.embeddingTokensEstimated=(tokenUsage.embeddingTokensEstimated||0)+estimateText(query);}
         let found=await sb('/rest/v1/rpc/aria_search',token,{p_query:keywords,p_embedding:vector,p_vault:scope??null});
+        if(!found.length&&scope&&!vault){found=await sb('/rest/v1/rpc/aria_search',token,{p_query:keywords,p_embedding:null,p_vault:null});tokenUsage.ragSearches++;}
         if(deep)found=await expandSections(found,token);
         tokenUsage.ragSearches=(tokenUsage.ragSearches||0)+1;tokenUsage.semanticSearches=(tokenUsage.semanticSearches||0)+(vector?1:0);tokenUsage.retrievalMs=(tokenUsage.retrievalMs||0)+Date.now()-started;return found;
       };

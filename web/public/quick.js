@@ -2,8 +2,8 @@ const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefin
 
 export function mountQuick(root,{api,open,move,confirm:confirmBox,voice=()=>null}) {
   root.innerHTML=`<div class="quick-workspace"><h1>Quick note</h1>
-    <form id="quick-form"><label class="sr-only" for="quick-text">Quick note</label><textarea id="quick-text" rows="3" maxlength="12000" placeholder="Write a note…" required></textarea>
-    <div class="quick-controls"><label class="sw"><input id="quick-detailed" type="checkbox"><i></i><span id="quick-mode">Concise</span></label><button id="quick-send">Send</button></div>
+    <form id="quick-form"><label class="sr-only" for="quick-text">Quick note</label><textarea id="quick-text" rows="3" maxlength="12000" placeholder="spill it. I’ll keep it~" required></textarea>
+    <div class="quick-controls"><label class="sw"><input id="quick-detailed" type="checkbox"><i></i><span id="quick-mode">Concise</span></label><button id="quick-send">Catch this</button></div>
     <p class="quick-help">Organized with Gemini · Original kept · AI search off by default</p></form>
     <p id="quick-status" role="status" aria-live="polite"></p><div id="quick-outbox"></div>
     <div class="quick-history-heading"><h2>Recent notes</h2><button id="quick-refresh" type="button">Refresh</button></div><div id="quick-history"></div>
