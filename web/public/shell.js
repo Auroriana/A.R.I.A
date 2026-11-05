@@ -1,3 +1,5 @@
+import {mountAgenda} from '/agenda.js';
+import {captureIntent} from '/capture.js';
 import {queueJump,clearScan,showScan,stopFlight} from '/scan-path.js';
 import {readChatStream} from '/chat-stream.js';
 import {setExpression} from '/expression.js';
@@ -12,8 +14,10 @@ import {syncChats,portableChat} from '/chat-sync.js';
 import {conversationMemory,listChats,saveChat,deleteChat,chatRows,commitSync} from '/chat-store.js';
 
 const $=id=>document.getElementById(id),el=(t,x)=>{const n=document.createElement(t);if(x!==undefined)n.textContent=x;return n};
+let booting=true;
 let history=[],signedIn=false,busy=false,cfg,first=true,owner="",currentChat=null,chatController=null;
 const core=mountCoreSettings({api,owner:()=>owner,busy:()=>busy,onWelcome:()=>loadWelcome(owner,true),onArchive:async()=>{await syncHistory(true);archiveError=null;archived.clear();for(const c of [...await listChats(owner)].reverse())archive(c);await archiveQueue;if(archiveError)throw archiveError;await loadVaults();}});
+const agenda=mountAgenda({api,owner:()=>owner,busy:()=>busy,ready:()=>!booting,model:()=>$('model').value,settings:()=>core.get(),onError:message=>err(message),save:async(c,account=owner)=>{if(owner!==account)return;await saveChat(account,c);if(owner!==account)return;scheduleSync();const merged=(await listChats(account)).find(row=>row.id===c.id);if(merged)archive(merged);await refreshHistory();return merged;},open:async c=>{displayChat(c);tab(false);await refreshHistory();},reply:text=>{$('q').value=text;$('f').requestSubmit();}});
 let archiveQueue=Promise.resolve(),archiveError=null;const archived=new Map();
 function archive(c){const account=owner,snapshot=portableChat(structuredClone(c)),fingerprint=JSON.stringify(snapshot.messages);if(!account||!snapshot.messages.length||archived.get(account+':'+c.id)===fingerprint)return;archiveQueue=archiveQueue.then(async()=>{if(owner!==account)return;const result=await api('history-archive',snapshot);if(result.vault&&![...$('vault').options].some(o=>o.value===result.vault)){const selected=$('vault').value;await loadVaults();$('vault').value=selected;}archived.set(account+':'+snapshot.id,fingerprint)}).catch(e=>{archiveError=e;err('History vault sync failed: '+e.message+' The browser copy is still available.');});}
 function showPersonality(it,m,animate=true){
@@ -46,7 +50,7 @@ function webPanel(it,m){
 async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal});return readChatStream(r,e=>{if(e.stage==='personality-scan'){setExpression('focused_analysis');showScan(e.passages);}if(e.stage==='quota-wait'){const it=$('msgs').querySelector('[data-pending]');if(it)setStatus(it,e.message);}});}
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
 const quick=mountQuick($('quick'),{api,confirm:confirmAction,voice:()=>{const s=core.get();return s?.enabled?s.prompts.personality:null;},move:(path,vault,version)=>workspace.move(path,vault,version),open:async(path,vault)=>{tab(true);await workspace.open(path,vault);}});
-async function api(p,b){const r=await fetch('/api/'+p,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
+async function api(p,b){const r=await fetch('/api/'+p,{signal:AbortSignal.timeout(90000),method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(r.status===401){signedIn=false;$('login').showModal()}if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
 async function chat(body,on){
  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal:chatController?.signal});
  if(r.status===401){signedIn=false;$('login').showModal()}
@@ -119,7 +123,21 @@ function buildModels(){const p=$('pm');p.replaceChildren();const g=el('div');g.c
  for(const m of cfg.models){const b=el('button',m.name);b.type='button';b.className='po'+(m.id===$('model').value?' on':'');b.dataset.id=m.id;b.append(el('small',m.rpm+'/min · '+m.rpd+'/day'));p.append(b)}
  const d=el('div');d.className='pg off';d.innerHTML=DS+'DEEPSEEK · OFF';p.append(d)}
 function upd(){const m=cfg?.models.find(m=>m.id===$('model').value);$('mp').title=m?.name||'';}
-async function acct(email){currentChat=null;reset();tab(false);$('resume-chat').hidden=true;signedIn=true;owner=email;await core.load().catch(()=>{});$('out').hidden=false;if($('login').open)$('login').close();await loadVaults();await restoreChats();quick.init(owner);scheduleSync();loadWelcome(owner);}
+function bootFailure(error,retry){
+ $('capri-loading').hidden=false;$('loading-status').textContent='Could not finish syncing: '+error.message;
+ const button=$('loading-retry');button.hidden=false;button.onclick=()=>{button.hidden=true;retry();};
+}
+async function acct(email){
+ booting=true;clearTimeout(syncTimer);$('capri-loading').hidden=false;$('loading-status').textContent='Syncing your conversations…';$('loading-retry').hidden=true;
+ try{
+ currentChat=null;reset();tab(false);$('resume-chat').hidden=true;signedIn=true;owner=email;await core.load().catch(()=>{});$('out').hidden=false;if($('login').open)$('login').close();
+ await loadVaults();await syncHistory(true);await restoreChats();quick.init(owner);loadWelcome(owner);
+ const target=new URL(location.href).searchParams.get('chat');
+ if(target)await openChat(target);else { $('loading-status').textContent='Checking your reminders…';await agenda.check(true); }
+ booting=false;$('capri-loading').hidden=true;scheduleSync();
+ }catch(e){bootFailure(e,()=>acct(email));}
+}
+
 async function loadVaults(){try{const{vaults}=await api('vaults');const v=$('vault');v.replaceChildren(new Option('All vaults','all'));for(const x of vaults)v.append(new Option(x.name,x.id));await workspace.init(vaults,owner);}catch(e){err(e.message)}}
 function setMode(v){$('mode').value=v;$('mc').classList.toggle('on',v==='general');$('mv').classList.toggle('on',v==='vault');$('vault').hidden=v!=='vault';if(currentChat){currentChat.mode=v;persistChat();}}
 $('mc').onclick=()=>!busy&&setMode('general');$('mv').onclick=()=>!busy&&setMode('vault');
@@ -129,7 +147,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.pick'))$('pm').hidd
 $('pt').onclick=()=>{if($('app').classList.toggle('pt'))$('app').classList.add('hc');};
 $('skip').onclick=()=>$('login').close();
 $('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('le').textContent='';try{await acct((await api('login',{email:$('email').value,password:$('pw').value,remember:$('remember-device').checked})).email);$('pw').value=''}catch(x){$('le').textContent=x.message}finally{$('lb').disabled=false}};
-$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;welcomeLines=[];reset();workspace.clear();quick.clear();owner='';core.clear();currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
+$('out').onclick=async()=>{try{await api('logout',{});signedIn=false;agenda.clear();welcomeLines=[];reset();workspace.clear();quick.clear();owner='';core.clear();currentChat=null;$('chat-history').replaceChildren();$('out').hidden=true;$('login').showModal()}catch(x){err(x.message)}};
 $('q').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('f').requestSubmit()}};
 
 function blankChat(){return {id:crypto.randomUUID(),title:'New conversation',updated:Date.now(),messages:[],mode:$('mode').value,vault:$('vault').value||'all',model:$('model').value,pending:null};}
@@ -137,17 +155,18 @@ async function refreshHistory(){const chats=await listChats(owner),box=$('chat-h
  for(const c of chats){const row=el('div');row.className='hist-row'+(c.id===currentChat?.id?' on':'');const b=el('button',c.title);b.title=c.title;b.onclick=()=>openChat(c.id);
   const x=el('button','×');x.className='hist-del';x.setAttribute('aria-label','Delete conversation');x.onclick=e=>{e.stopPropagation();removeChat(c.id)};row.append(b,x);box.append(row)}}
 const closeHist=()=>{if(matchMedia('(max-width:860px)').matches)$('app').classList.add('hc')};
-async function openChat(id){if(busy)return;const c=(await listChats(owner)).find(c=>c.id===id);if(c){displayChat(c);await refreshHistory();closeHist()}}
+async function openChat(id){if(busy)return;let c=(await listChats(owner)).find(c=>c.id===id);if(!c){const remote=await api('chat-get?id='+encodeURIComponent(id));c=remote.chat;if(c)await saveChat(owner,{...c,version:remote.version,dirty:false});}if(c){displayChat(c);await refreshHistory();closeHist()}else err('This conversation is no longer available. Open REMINDERS to see pending items.');}
 async function removeChat(id){if(busy||!await confirmAction('Delete this conversation on your devices? Its History vault archive remains available.','Delete'))return;await deleteChat(owner,id);scheduleSync();if(currentChat?.id===id){currentChat=null;reset();$('resume-chat').hidden=true}await refreshHistory()}
 async function persistChat(){if(!owner||!currentChat)return;try{currentChat.updated=Date.now();await saveChat(owner,currentChat);scheduleSync();archive(currentChat);await refreshHistory();}catch{err('Conversation could not be saved in this browser. Keep this page open.');}}
 function displayChat(c){reset();currentChat=c;$('mode').value=c.mode||'general';$('mc').classList.toggle('on',c.mode!=='vault');$('mv').classList.toggle('on',c.mode==='vault');$('vault').hidden=c.mode!=='vault';$('vault').value=c.vault||'all';if(cfg.models.some(m=>m.id===c.model))$('model').value=c.model;buildModels();upd();
  for(const m of c.messages){const it=msg(m.role,m.text);if(m.role==='model'){md(it.querySelector('.md'),m.text);refs(it,m.sources||[]);showUsage(it,m.usage);showPersonality(it,m,false);webPanel(it,m);}}
- history=conversationMemory(c.messages);$('resume-chat').hidden=!c.pending;$('resume-chat').textContent='Resume reply';estimateDraft();
+ history=conversationMemory(c.messages);$('resume-chat').hidden=!(c.pending||c.capture);$('resume-chat').textContent='Resume reply';estimateDraft();
 }
 let syncTimer,syncRunning=false;
-function scheduleSync(){clearTimeout(syncTimer);syncTimer=setTimeout(syncHistory,400);}
+function scheduleSync(){if(booting)return;clearTimeout(syncTimer);syncTimer=setTimeout(syncHistory,400);}
 async function syncHistory(manual=false){
- const account=owner;if(!account||!signedIn||busy||syncRunning||document.hidden)return;
+ while(manual&&syncRunning)await new Promise(resolve=>setTimeout(resolve,50));
+ const account=owner;if(!account||!signedIn||busy||syncRunning||(!manual&&document.hidden))return;
  syncRunning=true;const active=()=>account===owner&&signedIn;
  try{
    await syncChats({rows:await chatRows(account),api,active,commit:async(prior,next)=>{
@@ -166,10 +185,16 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleSy
 window.addEventListener('online',scheduleSync);
 setInterval(()=>{if(!$('chat').hidden)scheduleSync()},30000);
 async function restoreChats(){try{await refreshHistory();}catch{err('Browser history is unavailable. Conversations will last for this page only.');}}
+$('reminders').onclick=()=>{if(signedIn)agenda.check(true,true);else $('login').showModal();};
 $('new-chat').onclick=()=>{if(busy)return;reset();currentChat=null;$('resume-chat').hidden=true;refreshHistory();closeHist();$('q').focus()};
-$('resume-chat').onclick=()=>{if(!busy&&currentChat?.pending)runPending();};
-function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp','concise','new-chat','vault','aria-settings'])$(id).disabled=value;$('resume-chat').hidden=value||!currentChat?.pending;$('pause-chat').hidden=!value;if(!value)scheduleSync();}
+$('resume-chat').onclick=()=>{if(!busy&&currentChat?.capture)runCapture();else if(!busy&&currentChat?.pending)runPending();};
+function lockChat(value){busy=value;for(const id of ['send','add','mc','mv','mp','concise','new-chat','vault','aria-settings'])$(id).disabled=value;$('resume-chat').hidden=value||!(currentChat?.pending||currentChat?.capture);$('pause-chat').hidden=!value;if(!value)scheduleSync();}
 $('pause-chat').onclick=()=>chatController?.abort();
+async function runCapture(){
+ lockChat(true);try{const data=await api('capture',currentChat.capture);currentChat.messages.push({role:'model',text:data.answer});delete currentChat.capture;msg('model',data.answer);history=conversationMemory(currentChat.messages);await persistChat();if(data.kind==='note')api('quick-kick',{}).catch(e=>err('Your note is saved; filing is pending: '+e.message));}
+ catch(e){err('Could not confirm saving: '+e.message+' Use Resume reply to retry safely.');}
+ finally{lockChat(false);}
+}
 async function runPending(){
  if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
  const pending=currentChat.pending,it=$('msgs').querySelector('[data-pending]')||msg('model','');it.dataset.pending='true';clearScan();setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
@@ -219,7 +244,7 @@ async function runPending(){
 }
 $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('login').showModal();return;}
  const text=$('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':'');if(!text)return;
- if(currentChat?.pending){err('Resume the pending question or start a new conversation.');return;}
+ if(currentChat?.pending||currentChat?.capture){err('Resume the pending question or start a new conversation.');return;}
  lockChat(true);
  try{
  currentChat??=blankChat();history=conversationMemory(currentChat.messages);
@@ -227,6 +252,11 @@ $('f').onsubmit=async e=>{e.preventDefault();if(busy)return;if(!signedIn){$('log
  const display=text+(sent.length?'\n'+sent.map(f=>'[attached: '+f.name+']').join(' '):'');msg('user',display);
  if(!currentChat.messages.length)currentChat.title=text.slice(0,65);currentChat.messages.push({id:crypto.randomUUID(),started:Date.now(),role:'user',text:display});
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
+ if(!sent.length&&captureIntent(text)){
+  const capture=await agenda.capture(text,currentChat.messages.at(-1).id);
+  if(capture.cancelled){const answer='No reminder set. Tell me when you’re ready.';currentChat.messages.push({role:'model',text:answer});msg('model',answer);await persistChat();return;}
+  currentChat.capture=capture;await persistChat();await runCapture();return;
+ }
  const overview=(await listChats(owner)).filter(c=>c.id!==currentChat.id).map(c=>({title:c.title,recent:c.messages.slice(-4).map(m=>({role:m.role,text:(m.personality||m.text).slice(0,1500)}))}));
  const retrying=/\b(again|retry)\b/i.test(text)&&/\b(mir|age|search|do it|try)\b/i.test(text);const priorQuestion=[...history].reverse().find(m=>m.role==='user'&&!/\b(again|retry)\b/i.test(m.text))?.text;
  currentChat.pending={turnId:currentChat.messages.at(-1).id,body:{message:retrying&&priorQuestion?priorQuestion:text,model:$('model').value,mode:$('mode').value,vault:$('vault').value||'all',history,followupCache:[...currentChat.messages].reverse().find(m=>m.role==='model')?.followupCache??null,concise:$('concise').checked,depth:$('concise').checked?'age':'mir',settings:core.get(),overview,files:sent.map(({mime,data})=>({mime,data}))}};
@@ -281,6 +311,14 @@ async function loadWelcome(account,refresh=false){
  }catch(e){if(refresh)throw e;}
 }
 showWelcome();
-try{cfg=await api('status');$('model').value=cfg.models[0].id;buildModels();upd();
- if(!cfg.configured||!cfg.geminiReady){$('setup').hidden=false;$('setup').textContent='Preview mode: finish Supabase and Gemini setup to enable answers.'}
- if(cfg.configured)try{await acct((await api('session')).email);if(openNotes)tab(true)}catch{}}catch{err('Could not reach the app server.')}
+async function initialize(){
+ try{
+  cfg=await api('status');$('model').value=cfg.models[0].id;buildModels();upd();
+  if(!cfg.configured||!cfg.geminiReady){$('setup').hidden=false;$('setup').textContent='Preview mode: finish Supabase and Gemini setup to enable answers.';}
+  if(cfg.configured){
+   try{const session=await api('session');await acct(session.email);if(!booting&&openNotes)tab(true);}
+   catch(e){if(e.status!==401)throw e;booting=false;$('capri-loading').hidden=true;}
+  }else{booting=false;$('capri-loading').hidden=true;}
+ }catch(e){bootFailure(e,initialize);}
+}
+await initialize();

@@ -1,6 +1,6 @@
 # Capri web app
 
-Dependency-free static frontend and Node.js API. All browser requests stay on your website origin. Server-side Supabase password login uses an HttpOnly, SameSite cookie; sessions expire after at most one hour and require sign-in again. Owner UUID is checked on every protected request. No API key reaches the browser.
+Static frontend and Node.js API with Web Push delivery. All browser requests stay on your website origin. Server-side Supabase password login uses an HttpOnly, SameSite cookie; sessions expire after at most one hour and require sign-in again. Owner UUID is checked on every protected request. No API key reaches the browser.
 
 See [current workspace, chat memory, screenshot input and resumable research](../docs/NOTES-WORKSPACE.md) for the implemented behavior and limits, and [automatic Obsidian sync](../docs/OBSIDIAN-SYNC.md) for one-time pairing.
 
@@ -30,11 +30,11 @@ In the chat's composer, change General chat to Search my notes and ask “What's
 
 Copy `.env.example` to `.env.local`. Enter a NEW Gemini API key after rotating the one shared in chat. Confirm in AI Studio that the selected key's project is Free, then set GEMINI_FREE_TIER_CONFIRMED=true. This switch is an operator assertion, not a billing API check. Linking billing to that project later can cause charges; the app cannot enforce Google's billing tier.
 
-From this folder: `npm run dev`. Open http://127.0.0.1:3000. No install/build step is needed. Run `npm test` for mocked provider and authentication tests.
+From this folder: `npm run dev`. Open http://127.0.0.1:3000. Run `npm ci` once before starting; no build step is needed. Run `npm test` for mocked provider and authentication tests.
 
 ## Deploy to Vercel
 
-Push the app code to your chosen GitHub repository (the parent .gitignore excludes vault/ and secrets). Import that repository into Vercel. Set Root Directory to `web`, Framework Preset to Other, Output Directory to `public`, and leave Build/Install commands empty. Use Node 22 or 24. Add the variables from `.env.example` to Vercel Settings → Environment Variables. The real project URL is the origin, without `/rest/v1/`.
+Push the app code to your chosen GitHub repository (the parent .gitignore excludes vault/ and secrets). Import that repository into Vercel. Set Root Directory to `web`, Framework Preset to Other, Output Directory to `public`, and leave the Build command empty; the checked-in Vercel config runs `npm ci --omit=dev` for installation. Use Node 22 or 24. Add the variables from `.env.example` to Vercel Settings → Environment Variables. The real project URL is the origin, without `/rest/v1/`.
 
 Set GEMINI_API_KEY only in server environment variables; no PUBLIC/NEXT_PUBLIC prefix. SUPABASE_PUBLISHABLE_KEY is the public key supplied by you, not a service-role key. Redeploy after changing environment variables.
 
@@ -118,3 +118,7 @@ On login, existing ten browser chats are queued for backfill. Subsequent saved c
 History syncing runs in the background and errors appear in the chat. Settings includes **Sync recent chats now** to retry/backfill and refresh vaults. Keep the browser open until syncing finishes. Archive retention across simultaneous clients is eventually reconciled by the next sync. Browser copies already evicted before this feature cannot be recovered.
 
 Verification: `node --test web/tests/*.test.mjs`; `node web/tests/core-browser.cjs` (uses the same locally installed Playwright/Chrome as the existing browser checks). Provider and database integration tests use fixtures; no paid generations or production database writes are needed for the checks.
+
+## Notes, reminders and startup agenda
+
+See [conversational capture and reminder setup](../docs/REMINDERS.md) for chat commands, server migrations, browser notifications and future desktop/mobile delivery adapters. The loading animation waits for server chat sync and the startup agenda.

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import handler from './api/index.js';
-const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.avif':'image/avif'};
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.avif':'image/avif','.png':'image/png','.webmanifest':'application/manifest+json'};
 const port=Number(process.env.PORT??3000);
 const server=http.createServer(async(req,res)=>{
  if(req.url.startsWith('/api/'))return handler(req,res);

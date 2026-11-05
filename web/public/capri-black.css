@@ -6,9 +6,9 @@ html,body,#app,#chat,#hist,#app>aside{background-color:#010205}
 #welcome h1{text-shadow:3px 0 #ff003c;font-style:normal;letter-spacing:-.055em}
 .capri-avatar{width:64px;height:64px;object-fit:cover;border:1px solid #0f6;display:block;margin-bottom:20px}
 #capri-face,#chat:has(#welcome:not([hidden])) #capri-face{animation:none;rotate:0deg;translate:0 0;gap:0;scale:1;width:108px;height:60px}
-#capri-face i:first-child{display:block;width:108px;height:60px;rotate:0deg;scale:1;animation:none;background:url(/capri-eye.svg) center/contain no-repeat}
+#capri-face i:first-child{display:block;width:108px;height:60px;rotate:0deg;scale:1;animation:none;background:url(/capri-eyes.png) center/contain no-repeat}
 #capri-face i:last-child{display:none}
-#capri-face[data-expression=focused_analysis]:before,#capri-face[data-expression=focused_analysis]:after{content:'';display:block;position:absolute;width:30px;height:17px;background:url(/capri-eye.svg) center/cover;top:4px;opacity:1;animation:none}
+#capri-face[data-expression=focused_analysis]:before,#capri-face[data-expression=focused_analysis]:after{content:'';display:block;position:absolute;width:30px;height:17px;background:url(/capri-eyes.png) center/cover;top:4px;opacity:1;animation:none}
 #capri-face[data-expression=focused_analysis]:before{left:0}#capri-face[data-expression=focused_analysis]:after{right:0;inset:auto 0 4px auto}
 #capri-face[data-expression=amused_interest] i{clip-path:polygon(0 18%,100% 0,100% 80%,0 100%);transform:none}
 #capri-face[data-expression=surprised_delight] i{transform:scaleY(1.1);height:60px}

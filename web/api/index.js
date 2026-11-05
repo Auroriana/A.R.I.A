@@ -1,3 +1,5 @@
+import {pushRoutes,reminderWorker} from '../lib/reminder-push.js';
+import {agendaRoutes} from '../lib/agenda.js';
 import {setTimeout as quotaDelay} from 'node:timers/promises';
 import {withPersonalityQuota} from '../lib/personality-quota.js';
 import {cacheFollowup,readFollowup,FOLLOWUP_ROUTING} from '../lib/followup-cache.js';
@@ -95,6 +97,7 @@ export default async function handler(req,res){
       finally{sessionCookies(res,null,false);}
       return send(200,{ok:true});
     }
+    if(req.method==='POST'&&route==='/api/reminder-worker')return await reminderWorker({req,sb,fail,send});
     if(req.method==='POST'&&route==='/api/quick-worker'){
       if(!workerAuthorized(req.headers.authorization,process.env.QUICK_WORKER_SECRET))throw fail('Access denied.',403);
       if(!process.env.ARIA_EMAIL||!process.env.ARIA_PASSWORD)throw fail('Quick Note worker credentials are not configured.',503);
@@ -105,6 +108,8 @@ export default async function handler(req,res){
     const {token,user}=await sessionFor(req,res);
     if(user.id!==process.env.OWNER_USER_ID)throw fail('Access denied.',403);
     if(req.method==='GET'&&route==='/api/core-settings')return send(200,{defaults,legacyPersonality,legacyPersonalities,models:coreModels,claudeReady:!!process.env.ANTHROPIC_API_KEY&&process.env.CLAUDE_API_ENABLED==='true'});
+    if(await pushRoutes({req,route,token,sb,send,fail,readBody}))return;
+    if(await agendaRoutes({req,route,token,sb,send,fail,readBody,generate:gemini,model:PLANNER_MODEL}))return;
     if(await chatRoutes({req,route,token,sb,send,fail,readBody,generate:gemini,model:PLANNER_MODEL}))return;
     if(req.method==='POST'&&route==='/api/history-archive')return send(200,await archiveChat(await readBody(req,12000000),{sb,token}));
     if(req.method==='POST'&&route==='/api/personality'){

@@ -1,0 +1,24 @@
+#capri-loading{position:fixed;inset:0;z-index:1000;background:#080b10;color:#d1f5ec;display:grid;place-content:center;text-align:center;gap:18px;font:16px system-ui;letter-spacing:.12em}#capri-loading[hidden]{display:none}#capri-loading img{width:96px;border-radius:50%;margin:auto}.agenda-dialog{width:min(540px,calc(100vw - 32px));max-height:85dvh;overflow:auto;padding:28px;border:1px solid #38534d;border-radius:18px;background:#101a1e;color:#effbf8;box-sizing:border-box}.agenda-dialog::backdrop{background:#000a;backdrop-filter:blur(5px)}.agenda-dialog h2{font:24px system-ui;letter-spacing:0}.agenda-dialog p{white-space:pre-wrap;line-height:1.6;overflow-wrap:anywhere}.agenda-dialog textarea,.agenda-dialog input{width:100%;box-sizing:border-box;padding:12px;margin:12px 0;color:inherit;background:#081114;border:1px solid #52746c;border-radius:8px}.agenda-dialog textarea{min-height:90px}.agenda-dialog button{margin:6px 8px 6px 0;padding:10px;border-radius:8px}.agenda-dialog label{display:block}.agenda-dialog [role=status]{font-size:13px;color:#accbc3}
+
+/* Replace .loading-eyes with the future Capri animation; readiness is driven by sync. */
+#capri-loading{background:#03070bd9;backdrop-filter:blur(22px);padding:24px;z-index:1000}
+#capri-loading .loading-eyes{position:relative;width:min(300px,65vw);margin:auto;animation:capri-loading-float 3s ease-in-out infinite}
+#capri-loading .loading-eyes:before{content:'';position:absolute;inset:30% 10%;background:#00f463;filter:blur(34px);opacity:.22;animation:capri-loading-glow 2.4s ease-in-out infinite}
+#capri-loading .loading-eyes img{position:relative;width:100%;height:auto;border-radius:0;display:block;filter:drop-shadow(0 0 10px #00ff6640)}
+#loading-status{max-width:420px;line-height:1.6;font-size:13px;letter-spacing:.04em}
+#loading-retry{justify-self:center;padding:10px 24px;border:1px solid #00f463;border-radius:8px}
+#capri-face i:first-child{border-radius:0!important;clip-path:none!important}
+#capri-face[data-expression=focused_analysis]:before,#capri-face[data-expression=focused_analysis]:after{display:none}
+@keyframes capri-loading-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes capri-loading-glow{0%,100%{opacity:.15}50%{opacity:.32}}
+@media(prefers-reduced-motion:reduce){#capri-loading .loading-eyes,#capri-loading .loading-eyes:before{animation:none}}
+@media(max-width:600px){#reminders{font-size:9px!important;letter-spacing:0!important}}
+#capri-face[data-expression=focused_analysis] i:first-child{background-image:url(/capri-eyes-focused.png);transform:none;animation:capri-panel-think 3.6s ease-in-out infinite}
+#capri-face[data-expression=amused_interest] i:first-child{transform:skewY(-3deg)}
+#capri-face[data-expression=restrained_concern] i:first-child{transform:skewY(2deg) scaleY(.94)}
+#capri-face[data-expression=anger] i:first-child{transform:skewY(-2deg) scaleY(.9)}
+@keyframes capri-panel-think{0%,100%{transform:skewY(0)}35%{transform:skewY(-3deg)}70%{transform:skewY(2deg)}}
+@media(max-width:600px){#app>header>div{flex-shrink:0}#app>header nav{min-width:0;overflow-x:auto;flex-wrap:nowrap}#app>header nav button{flex-shrink:0}}
+@media(prefers-reduced-motion:reduce){#capri-face[data-expression=focused_analysis] i:first-child{animation:none}}
+.agenda-dialog form button{background:#00ef63;color:#03180c;border:1px solid #00ef63;font-weight:650}
+.agenda-dialog button:focus-visible{outline:2px solid #9be7ff;outline-offset:3px}
