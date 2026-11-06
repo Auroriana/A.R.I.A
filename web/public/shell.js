@@ -1,6 +1,7 @@
 import {createTimeline,mergeMessages} from '/timeline.js';
 import {mountTerminals} from '/terminals.js';
 import {splitReply} from '/message-blocks.js';
+import {bubbleDelay,turnHistory} from '/conversation-flow.js';
 import {scheduledTime} from '/capture.js';
 import {mountAgenda} from '/agenda.js';
 import {captureIntent,reminderQuery} from '/capture.js';
@@ -125,14 +126,18 @@ function showUsage(it,usage){if(!usage)return;it.dataset.tokens=String(usage.tot
 let replyTarget=null;
 function messageTools(it,m){
  it.dataset.message=m.id;it.querySelector('.message-menu')?.remove();
+ it.querySelector('.message-reply')?.remove();
  const menu=el('details'),toggle=el('summary','•••');menu.className='message-menu';toggle.setAttribute('aria-label','Message options');
  const date=el('time',new Date(m.sentAt||m.started).toLocaleString(undefined,{month:'long',day:'numeric',hour:'numeric',minute:'2-digit'}));
  menu.append(toggle,date);
- if(m.role==='model'){const count=el('span',String(m.usage?.totalTokenCount||it.dataset.tokens||0));count.className='message-tokens';const reply=el('button','Reply');reply.type='button';reply.onclick=()=>{replyTarget={id:m.id,text:(it.querySelector('.md')?.textContent||m.text).slice(0,1000)};const preview=$('reply-preview');preview.hidden=false;preview.firstChild.textContent=replyTarget.text;menu.open=false;$('q').focus();};menu.append(count,reply);}
+ if(m.role==='model'){const count=el('span',String(m.usage?.totalTokenCount||it.dataset.tokens||0));count.className='message-tokens';const reply=el('button','↩');reply.type='button';reply.className='message-reply';reply.setAttribute('aria-label','Reply');reply.title='Reply';reply.onclick=()=>{replyTarget={id:m.id,text:(it.querySelector('.md')?.textContent||m.text).slice(0,1000)};const preview=$('reply-preview');preview.hidden=false;preview.firstChild.textContent=replyTarget.text;menu.open=false;$('q').focus();};menu.append(count);it.append(reply);}
+ menu.addEventListener('toggle',()=>{if(menu.open)for(const other of $('msgs').querySelectorAll('.message-menu[open]'))if(other!==menu)other.open=false;});
  it.append(menu);
  if(m.replyTo&&!it.querySelector('.reply-quote')){const quote=el('blockquote',m.replyTo.text);quote.className='reply-quote';it.prepend(quote);}
 }
 const replyPreview=el('div'),replyCancel=el('button','×');replyPreview.id='reply-preview';replyPreview.hidden=true;replyCancel.type='button';replyCancel.setAttribute('aria-label','Cancel reply');replyCancel.onclick=()=>{replyTarget=null;replyPreview.hidden=true;};replyPreview.append(el('span'),replyCancel);$('f').before(replyPreview);
+document.addEventListener('click',e=>{if(!e.target.closest('.message-menu'))$('msgs').querySelectorAll('.message-menu[open]').forEach(n=>n.open=false);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('msgs').querySelectorAll('.message-menu[open]').forEach(n=>n.open=false);});
 
 function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent=String(estimateQuestion($('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':''),history,files));n.title='Estimated tokens for question, conversation history and attachments. Attachments use a rough allowance of 4096 tokens each.';n.setAttribute('aria-label',n.title);}
 $('q').addEventListener('input',estimateDraft);
@@ -226,7 +231,7 @@ async function runCapture(){
  lockChat(true);try{const data=await api('capture',capture);if(owner!==account)return;
  const styled=await styleAction(capture.message,data.answer);data.answer=styled.answer;data.blocks=styled.blocks;
  const answer={id:crypto.randomUUID(),turn:capture.key,started:Date.now(),edited:Date.now(),role:'model',text:data.answer,blocks:data.blocks,reminder:data.kind==='reminder'?{id:capture.key}:undefined,...(data.job?{captureJob:data.job}:{}),...(data.note?{note:data.note}:{})};
- currentChat.messages.push(answer);delete currentChat.capture;const it=msg('model',data.answer);renderBlocks(it,answer);history=conversationMemory(currentChat.messages);await persistChat();
+ queueReply(answer,false);delete currentChat.capture;await persistChat();
  terminal.update({state:data.kind==='note'?'queued':'saved',text:data.answer,time:capture.due});if(data.archiveWarning)err('Reminder saved. Overview sync pending: '+data.archiveWarning);
  if(data.kind==='note'){void watchNote(data.job,terminal,account);api('quick-kick',{}).then(()=>scheduleSync()).catch(e=>terminal.update({state:'queued',text:'Original saved. Filing will retry: '+e.message}));}
  }catch(e){terminal.update({state:'failed',text:e.message});err('Could not confirm saving: '+e.message+' Use Resume reply to retry safely.');}
@@ -242,7 +247,8 @@ async function watchNote(id,terminal,account){
   await new Promise(resolve=>setTimeout(resolve,5000));
  }
 }
-async function localReply(text,extras={}){const m={id:crypto.randomUUID(),turn:currentChat.activeBatch?.at(-1)?.id||currentChat.messages.at(-1)?.id||crypto.randomUUID(),started:Date.now(),edited:Date.now(),role:'model',text,...extras};currentChat.messages.push(m);renderBlocks(msg('model',text),m);history=conversationMemory(currentChat.messages);await persistChat();}
+function queueReply(message,interruptible=true){const blocks=message.blocks?.length?message.blocks:splitReply(message.text);const messages=blocks.map((text,index)=>({...message,id:index?crypto.randomUUID():message.id,text,blocks:[text],usage:index?undefined:message.usage,deliveryInterruptible:interruptible}));if(currentChat.delivery?.messages.length)currentChat.delivery.messages.push(...messages);else currentChat.delivery={messages,due:Date.now()+bubbleDelay(blocks[0])};syncDeliveryStatus();}
+async function localReply(text,extras={}){const m={id:crypto.randomUUID(),turn:currentChat.activeBatch?.at(-1)?.id||currentChat.messages.at(-1)?.id||crypto.randomUUID(),started:Date.now(),edited:Date.now(),role:'model',text,...extras};queueReply(m,false);await persistChat();}
 async function styleAction(message,answer){try{return await personalityCall({action:'rewrite',message,answer,history:conversationMemory(currentChat.messages),settings:{...core.get(),memory:false,web:'off'},sprite:true,concise:true,operational:true});}catch{return {answer:answer.startsWith('Today')?'I couldn’t read back your schedule just now. Your reminders are still saved.':answer};}}
 async function showTodayReminders(){const r=await api('reminder-overview',{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});terminals.open({id:'today-reminders',kind:'reminder',title:'REMINDERS / LIVE SERVER',text:r.answer,state:'read'});const styled=await styleAction('What reminders do I have today?',r.answer);await localReply(styled.answer,{blocks:styled.blocks,note:r.note,reminder:{overview:true},usage:styled.usage});}
 async function runPending(){
@@ -289,18 +295,17 @@ async function runPending(){
      citationWarning:reply.citationWarning,usage,followupCache,web:reply.web,webRequest:reply.webRequest,
      ...(reply.webRequest?{webContext}:{})};
    delete it.dataset.pending;currentChat.pending=null;
-   const wait=Math.max(0,Math.min(900,Number(reply.delaySeconds)||0))*1000;
-   if(wait||currentChat.delayed?.length){const due=currentChat.delayed?.[0]?.due??Date.now()+wait;(currentChat.delayed??=[]).push({due,deadline:currentChat.delayed?.[0]?.deadline??Date.now()+900000,message:saved});it.remove();await persistChat();return;}
-   currentChat.messages.push(saved);history=conversationMemory(currentChat.messages);
-   const follow=$('scroll').scrollHeight-$('scroll').scrollTop-$('scroll').clientHeight<160;
-   showPersonality(it,saved);refs(it,saved.sources);webPanel(it,saved);showUsage(it,usage);cool();if(follow)$('scroll').scrollTop=1e9;await persistChat();
+   // A casual answer composed before a follow-up is already stale. The next
+   // turn sees the original user messages and all new messages in order.
+   if(first.route==='reply'&&currentChat.inputQueue?.length){it.remove();await persistChat();return;}
+   it.remove();queueReply(saved,first.route==='reply');cool();await persistChat();
  }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setExpression('neutral_attention');setStatus(it,'Reply paused: '+message);err(message+' Your progress is saved. Use Resume reply to continue.');cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
 }
 async function processBatch(batch){const text=batch.map(x=>x.replyTo?'[Reply to Capri: '+x.replyTo.text+']\n'+x.text:x.text).join('\n\n[Next message]\n');
  lockChat(true);
  try{
- currentChat??=blankChat();const context=await timeline.context();history=conversationMemory(mergeMessages(context,currentChat.messages).filter(m=>!batch.some(x=>x.id===m.id)&&m.started<(currentChat.messages.find(m=>m.id===batch[0].id)?.started||Date.now())));
+ currentChat??=blankChat();const context=await timeline.context();history=conversationMemory(turnHistory(mergeMessages(context,currentChat.messages),batch,currentChat.inputQueue));
  const sent=batch.flatMap(x=>x.files);nodes.clear();dirs.clear();boxes.clear();slog.replaceChildren();order=0;trail.replaceChildren();$('cur').textContent='';
  currentChat.mode=$('mode').value;currentChat.vault=$('vault').value;currentChat.model=$('model').value;
  if(!sent.length&&currentChat.reminderDraft&&!captureIntent(text)){
@@ -325,25 +330,34 @@ async function pumpConversation(){
  if(queueWorking||busy||booting||!signedIn||!currentChat||Date.now()<queueRetryAt)return;
  queueWorking=true;const account=owner;
  try{
-  if(currentChat.inputQueue?.length&&currentChat.inputQueue[0].due<=Date.now()&&!currentChat.pending&&!currentChat.capture){
+  // Migrate old minute-delayed replies. New input supersedes any unseen draft.
+  if(currentChat.delayed?.length){if(!currentChat.inputQueue?.length&&!currentChat.delivery){const messages=currentChat.delayed.flatMap(({message})=>(message.blocks?.length?message.blocks:splitReply(message.text)).map((text,index)=>({...message,id:index?crypto.randomUUID():message.id,text,blocks:[text]})));currentChat.delivery={messages,due:Date.now()};}delete currentChat.delayed;await persistChat();}
+  while(currentChat.inputQueue?.length&&!currentChat.pending&&!currentChat.capture){
+   // Keep completed actions/research; only unseen casual text is superseded.
+   if(currentChat.delivery){currentChat.delivery.messages=currentChat.delivery.messages.filter(m=>m.deliveryInterruptible===false);if(!currentChat.delivery.messages.length)delete currentChat.delivery;}
+   syncDeliveryStatus();
    const first=currentChat.inputQueue[0],batch=[];let length=0;
-   while(currentChat.inputQueue.length&&currentChat.inputQueue[0].due===first.due){const next=currentChat.inputQueue[0];if(batch.length&&(length+next.text.length+(next.replyTo?.text.length||0)+40>3800||batch.flatMap(x=>x.files).length+next.files.length>4||batch.flatMap(x=>x.files).reduce((n,f)=>n+f.data.length,0)+next.files.reduce((n,f)=>n+f.data.length,0)>3900000||captureIntent(first.text)||captureIntent(next.text)))break;batch.push(currentChat.inputQueue.shift());length+=next.text.length+(next.replyTo?.text.length||0)+40;}
+   while(currentChat.inputQueue.length){const next=currentChat.inputQueue[0];if(batch.length&&(length+next.text.length+(next.replyTo?.text.length||0)+40>3800||batch.flatMap(x=>x.files).length+next.files.length>4||batch.flatMap(x=>x.files).reduce((n,f)=>n+f.data.length,0)+next.files.reduce((n,f)=>n+f.data.length,0)>3900000||captureIntent(first.text)||captureIntent(next.text)))break;batch.push(currentChat.inputQueue.shift());length+=next.text.length+(next.replyTo?.text.length||0)+40;}
    currentChat.activeBatch=batch;await persistChat();await processBatch(batch);if(owner!==account)return;delete currentChat.activeBatch;await persistChat();
   }
-  if(!busy&&!currentChat.pending&&currentChat.delayed?.length&&(!currentChat.inputQueue?.length||Date.now()>=currentChat.delayed[0].deadline)&&currentChat.delayed[0].due<=Date.now()){
-   for(const {message} of currentChat.delayed){message.started=message.sentAt=Date.now();currentChat.messages.push(message);const it=msg('model','');showPersonality(it,message);refs(it,message.sources||[]);webPanel(it,message);showUsage(it,message.usage);}
-   currentChat.delayed=[];history=conversationMemory(currentChat.messages);await persistChat();
+  if(!busy&&!currentChat.pending&&currentChat.delivery?.messages.length&&currentChat.delivery.due<=Date.now()){
+   $('msgs').querySelector('[data-delivery]')?.remove();
+   const message=currentChat.delivery.messages.shift();delete message.deliveryInterruptible;message.started=message.sentAt=message.edited=Date.now();currentChat.messages.push(message);const it=msg('model','');showPersonality(it,message);refs(it,message.sources||[]);webPanel(it,message);showUsage(it,message.usage);
+   if(currentChat.delivery.messages.length)currentChat.delivery.due=Date.now()+bubbleDelay(currentChat.delivery.messages[0].text);else delete currentChat.delivery;
+   history=conversationMemory(currentChat.messages);await persistChat();
   }
+  syncDeliveryStatus();
  }catch(e){err(e.message);queueRetryAt=Date.now()+30000;if(owner===account&&currentChat.activeBatch&&!currentChat.pending&&!currentChat.capture){currentChat.inputQueue=[...currentChat.activeBatch,...(currentChat.inputQueue||[])];delete currentChat.activeBatch;await persistChat();}}finally{queueWorking=false;}
 }
-setInterval(()=>void pumpConversation(),500);
+function syncDeliveryStatus(){let it=$('msgs').querySelector('[data-delivery]');if(currentChat?.delivery?.messages.length){if(!it){it=msg('model','');it.dataset.delivery='true';setStatus(it,'Capri is typing');}}else it?.remove();}
+setInterval(()=>void pumpConversation(),250);
 $('f').onsubmit=async e=>{e.preventDefault();if(!signedIn){$('login').showModal();return;}
  const text=$('q').value.trim()||(files.length?'Read this attachment.':'');if(!text)return;
  if(text.length+(replyTarget?.text.length||0)>3500){err('Please keep each message under 3,500 characters.');return;}
  currentChat??=blankChat();const id=crypto.randomUUID(),now=Date.now(),sent=files;files=[];renderAtt();$('q').value='';
  const m={id,turn:id,started:now,edited:now,role:'user',text,replyTo:replyTarget};replyTarget=null;replyPreview.hidden=true;currentChat.messages.push(m);messageTools(msg('user',text),m);
- const queue=currentChat.inputQueue??=[];const last=queue.at(-1);queue.push({id,text,files:sent,replyTo:m.replyTo,due:last&&last.due>now?last.due:now+60000});
- await persistChat();
+ const queue=currentChat.inputQueue??=[];queue.push({id,text,files:sent,replyTo:m.replyTo,due:now});
+ await persistChat();void pumpConversation();
 };
 // ---- attachments (images are shrunk to JPEG <=1600px; PDFs sent as-is; ~2.8 MB total)
 let files=[];
