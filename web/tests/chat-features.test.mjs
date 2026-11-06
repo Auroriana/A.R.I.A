@@ -15,7 +15,7 @@ test('concise is optional and boolean; it changes synthesis without suppressing 
     if(++calls===1)return {answer:'{"queries":[]}'};
     assert.match(request.systemInstruction.parts[0].text,/Keep the answer concise/);return {answer:'Answer [S1].'};
   }});
-  assert.deepEqual(progress.map(p=>p.stage),['search','results','planning','answering']);assert.equal(progress[1].notes[0].title,'Note');
+  assert.deepEqual(progress.map(p=>p.stage),['search','results','planning','evidence','answering','evidence']);assert.equal(progress[1].notes[0].title,'Note');assert.equal(progress[3].notes[0].read,true);
 });
 test('provider errors distinguish invalid credentials, timeouts and network failure without leaking details',async()=>{
   await assert.rejects(gemini('gemini-3.8-flash',{},async()=>({ok:false,status:400,json:async()=>({error:{message:'sensitive upstream text',details:[{reason:'API_KEY_INVALID'}]}})})),/Replace GEMINI_API_KEY/);

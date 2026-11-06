@@ -1,3 +1,4 @@
+import {timelineRoutes} from '../lib/timeline.js';
 import {pushRoutes,reminderWorker} from '../lib/reminder-push.js';
 import {agendaRoutes} from '../lib/agenda.js';
 import {setTimeout as quotaDelay} from 'node:timers/promises';
@@ -110,6 +111,7 @@ export default async function handler(req,res){
     if(req.method==='GET'&&route==='/api/core-settings')return send(200,{defaults,legacyPersonality,legacyPersonalities,models:coreModels,claudeReady:!!process.env.ANTHROPIC_API_KEY&&process.env.CLAUDE_API_ENABLED==='true'});
     if(await pushRoutes({req,route,token,sb,send,fail,readBody}))return;
     if(await agendaRoutes({req,route,token,sb,send,fail,readBody,generate:gemini,model:PLANNER_MODEL}))return;
+    if(await timelineRoutes({req,route,token,sb,send,fail,readBody}))return;
     if(await chatRoutes({req,route,token,sb,send,fail,readBody,generate:gemini,model:PLANNER_MODEL}))return;
     if(req.method==='POST'&&route==='/api/history-archive')return send(200,await archiveChat(await readBody(req,12000000),{sb,token}));
     if(req.method==='POST'&&route==='/api/personality'){
@@ -184,6 +186,10 @@ export default async function handler(req,res){
     if(req.method!=='POST'||route!=='/api/chat')throw fail('Not found.',404);
     const incoming=await readBody(req,4_200_000);
     const validated=validateChat(incoming);
+    const timezone=incoming.timezone??'UTC';
+    if(typeof timezone!=='string'||timezone.length>100)throw fail('Invalid time zone.');
+    try{new Intl.DateTimeFormat('en',{timeZone:timezone}).format();}catch{throw fail('Invalid time zone.');}
+    if(incoming.timezone)validated.timezone=timezone;
     const core=settingsOf(incoming.settings);
     if(incoming.settings)validated.settings=core;
     const {model,message,mode,history,vault,concise,depth,files}=validated;
@@ -254,7 +260,7 @@ export default async function handler(req,res){
         tokenUsage.ragSearches=(tokenUsage.ragSearches||0)+1;tokenUsage.semanticSearches=(tokenUsage.semanticSearches||0)+(vector?1:0);tokenUsage.retrievalMs=(tokenUsage.retrievalMs||0)+Date.now()-started;return found;
       };
       const routeOn=process.env.ENABLE_ROUTER!=='false';
-      const options={message,search,generate,concise,deep,onProgress,files,history,overview:getOverview,route:routeOn,followup};
+      const options={message,search,generate,concise,deep,onProgress,files,history,overview:getOverview,route:routeOn,followup,timezone};
       const finish=result=>send(200,{...result,usage:tokenUsage,model:core.reasoning||model,followupCache:result.research?.reusedSources?validated.followupCache:cacheFollowup(result,user.id,vault)});
       // Old assistant answers and deleted evidence never become fresh vault evidence.
       if(incoming.resumable===true){

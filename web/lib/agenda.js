@@ -1,25 +1,32 @@
 import {settingsOf} from './core-settings.js';
 import {isUuid} from './notes.js';
 import {captureIntent} from '../public/capture.js';
+import {archiveReminderOverview} from './reminder-overview.js';
 export async function agendaRoutes({req,route,token,sb,send,fail,readBody,generate,model}){
- if(!['/api/capture','/api/agenda','/api/reminder-complete'].includes(route))return false;
+ if(!['/api/capture','/api/agenda','/api/reminder-complete','/api/reminder-overview'].includes(route))return false;
  const rpc=(name,body)=>sb('/rest/v1/rpc/'+name,token,body);
  if(route==='/api/agenda'&&req.method==='GET'){
   await rpc('aria_reminder_conversations',{});
-  send(200,{reminders:await rpc('aria_reminder_list',{})});return true;
+  const reminders=await rpc('aria_reminder_list',{});
+  const timezone=new URL(req.url,'http://localhost').searchParams.get('timezone');
+  let archiveWarning;if(timezone&&reminders.length)try{await archiveReminderOverview({sb,token,timezone});}catch(e){archiveWarning=e.message;}
+  send(200,{reminders,archiveWarning});return true;
  }
  if(req.method!=='POST')throw fail('Method not allowed.',405);
  const b=await readBody(req,80000);
+ if(route==='/api/reminder-overview'){const data=await archiveReminderOverview({sb,token,timezone:b.timezone});send(200,{answer:data.answer,note:data.note});return true;}
  if(!isUuid(b.key))throw fail('A valid request identifier is required.');
  if(route==='/api/reminder-complete'){
-  send(200,await rpc('aria_reminder_complete',{p_id:b.key}));return true;
+  const result=await rpc('aria_reminder_complete',{p_id:b.key});
+  if(b.timezone)try{await archiveReminderOverview({sb,token,timezone:b.timezone});}catch(e){result.archiveWarning=e.message;}
+  send(200,result);return true;
  }
  if(typeof b.message!=='string'||b.message.length>4000)throw fail('Enter a message of up to 4,000 characters.');
  const intent=captureIntent(b.message);if(!intent)throw fail('Use “Note this for me” or “Remind me about”.');
  if(intent.kind==='note'){
-  const r=await rpc('aria_quick_enqueue',{p_key:b.key,p_text:intent.text,p_mode:'detailed'});
+  const r=await rpc('aria_quick_enqueue',{p_key:b.key,p_text:intent.text,p_mode:'detailed',p_personality:settingsOf(b.settings).prompts.personality.slice(0,16000)});
   if(!r.ok)throw fail('The note could not be queued. Try again after checking Quick Note.',409);
-  send(200,{answer:'Saved your note to Quick Note. The original is stored; filing will run in the background.',kind:'note'});return true;
+  send(200,{answer:'Got it, choom. Your original’s saved — I’m filing the note. We can keep talking.',kind:'note',job:r.id});return true;
  }
  const due=Date.parse(b.due);
  if(!Number.isFinite(due))throw fail('Choose a future time within the next year.');
@@ -36,5 +43,6 @@ export async function agendaRoutes({req,route,token,sb,send,fail,readBody,genera
  }
  const r=await rpc('aria_reminder_save',{p_id:b.key,p_text:intent.text,p_due:new Date(due).toISOString(),p_timezone:b.timezone,p_notification:notification});
  if(!r.ok)throw fail('This request identifier already belongs to another reminder.',409);
- send(200,{kind:'reminder',answer:'I’ll remind you: '+intent.text+' — '+new Intl.DateTimeFormat('en',{dateStyle:'full',timeStyle:'short',timeZone:b.timezone}).format(new Date(due))+'. You’ll see it here when Capri is open, or when you return.'});return true;
+ let overview,archiveWarning;try{overview=await archiveReminderOverview({sb,token,timezone:b.timezone});}catch(e){archiveWarning=e.message;}
+ send(200,{kind:'reminder',note:overview?.note,archiveWarning,answer:'I’ll remind you: '+intent.text+' — '+new Intl.DateTimeFormat('en',{dateStyle:'full',timeStyle:'short',timeZone:b.timezone}).format(new Date(due))+'. It’ll arrive here in our chat.'});return true;
 }

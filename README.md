@@ -24,7 +24,7 @@ Built for a personal Obsidian workflow, with a browser interface backed by Supab
 
 ### Questions answered from your notes
 
-**General chat** is a normal assistant conversation. **Search my notes** retrieves evidence from your approved knowledge base before generating an answer.
+Capri chats normally and infers when a request needs evidence from your approved knowledge base. There is no manual Search Notes switch.
 
 Vault answers include source references and formatted excerpts. Capri checks that cited source IDs exist in the evidence actually supplied to the final model. This prevents nonexistent source references; it does not independently prove that every cited claim is correct.
 
@@ -81,12 +81,12 @@ Inputs that cannot be stored unchanged are rejected instead of silently modified
 
 ### Quick Note capture
 
-Quick Note accepts up to 12,000 characters in **Concise** or **Detailed** mode. It preserves the exact original and files a note containing that original alongside an organized version.
+Ask Capri to note something directly in chat. She preserves the exact original and files a note containing it alongside an organized version, while the conversation can continue.
 
 - Only explicitly opted-in vaults receive automatic placements.
 - Uncertain or invalid placements go to **Unsorted** for review.
 - Newly filed notes start with AI search disabled.
-- History exposes the original, destination, search toggle, retry, and move controls.
+- The chat badge opens the filed note or its pending status and retry control. The Notes workspace provides editing, search settings, and moving.
 - A browser outbox preserves unsent captures across reloads in the same browser.
 - A durable server queue handles acknowledged submissions, with duplicate protection and controlled retries.
 
@@ -104,7 +104,9 @@ See [Obsidian sync setup](docs/OBSIDIAN-SYNC.md) before pairing a vault.
 
 ### Conversations and attachments
 
-The latest ten conversations persist in IndexedDB on the current browser, scoped to the signed-in account. Creating an eleventh removes the oldest. Both chat modes receive bounded conversation history; previous answers provide context, not fresh evidence for procedural claims.
+Chat is one continuous, account-scoped message stream. The newest messages load first; scrolling up loads older pages. Individual messages sync through Supabase, with an IndexedDB outbox for pending writes. Capri infers when to search notes, and both ordinary conversation and research receive bounded model context. Previous answers provide context, not fresh evidence for procedural claims.
+
+Quick notes and reminders work directly in chat. Dated reminder overviews live in their own searchable vault; today's reminder questions use live server records. Desktop activity terminals share the screen with chat, while mobile uses a hideable overlay. See [conversation setup and rollout](docs/CONVERSATION-STREAM.md) for the required migration, notification architecture, and implementation limits.
 
 PNG, JPEG, WebP, and PDF attachments are supported, up to four files and approximately 2.8 MB total. Reading accuracy depends on the model and source quality. These chat attachments are separate from vault attachment synchronization.
 

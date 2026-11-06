@@ -1,0 +1,35 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile,readdir} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite(),owner='2b0adefe-04f4-4f39-9332-d0287953096b';
+const scalar=async(sql,args=[])=>(await db.query(sql,args)).rows[0]?.v;
+const rpc=(name,...args)=>scalar(`select ${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) v`,args);
+try{
+ await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);insert into auth.users values('${owner}');create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;select set_config('request.jwt.claim.sub','${owner}',false);create table aria_chunks(id uuid primary key default gen_random_uuid(),owner_id uuid,title text,source_path text,content text,ai_enabled boolean);`);
+ const read=name=>readFile(new URL('../supabase/'+name,import.meta.url),'utf8');
+ const notes=await read('002_notes.sql');await db.exec(notes.slice(notes.indexOf('create table public.aria_notes'),notes.indexOf('-- Optimistic-concurrency save.')));
+ const vaults=await read('004_vaults.sql');await db.exec(vaults.slice(vaults.indexOf('create table if not exists public.aria_vaults'),vaults.indexOf('-- Old signatures')));await db.exec(vaults.slice(vaults.indexOf('create or replace function public.aria_create_vault'),vaults.indexOf('-- p_vault null')));
+ await db.exec("alter table aria_vaults add column description text not null default '';");
+ for(const file of ['008_quick_notes.sql','012_quick_voice.sql','013_chats_welcome.sql','014_reminders.sql','015_reminder_push.sql'])await db.exec(await read(file));
+ const chatId=crypto.randomUUID(),legacy={id:chatId,title:'Existing conversation',updated:Date.now()-100000,messages:[{id:chatId+'/0',turn:chatId+'/0',started:Date.now()-100000,edited:0,role:'model',text:'Keep me.'}]};await rpc('aria_chat_save',chatId,0,JSON.stringify(legacy));
+ const paths=await readdir(new URL('../supabase/migrations/',import.meta.url));const migration=paths.find(p=>p.endsWith('_conversation_stream.sql'));
+ const sql=await readFile(new URL('../supabase/migrations/'+migration,import.meta.url),'utf8');await db.exec(sql);await db.exec(sql);
+ assert.equal(await scalar('select count(*)::int v from aria_messages'),1);
+ await db.exec('set role authenticated');await assert.rejects(db.exec('delete from aria_messages'),/permission denied/);
+ const batch=Array.from({length:40},(_,i)=>({id:'m'+i,turn:'m'+i,started:Date.now()+i,edited:1,role:'model',text:'Message '+i}));
+ await rpc('aria_message_save',JSON.stringify(batch));await rpc('aria_message_save',JSON.stringify(batch));
+ assert.equal(await scalar('select count(*)::int v from aria_messages'),41);
+ const previous=await scalar('select max(seq) v from aria_messages');await rpc('aria_message_save',JSON.stringify([{...batch[0],text:'Edited across devices',edited:2}]));const updates=(await db.query('select * from aria_message_page(null,$1,40)',[previous])).rows;assert.equal(updates.length,1);assert.equal(updates[0].message.text,'Edited across devices');
+ let rows=(await db.query('select * from aria_message_page(null,null,40)')).rows;assert.equal(rows.length,40);assert.equal(rows[0].message.text,'Edited across devices');const cursor=rows.at(-1).seq;
+ rows=(await db.query('select * from aria_message_page($1,null,40)',[cursor])).rows;assert.equal(rows.length,1);assert.equal(rows[0].message.text,'Keep me.');
+ await assert.rejects(rpc('aria_message_save',JSON.stringify([{...batch[0],role:'system'}])),/Invalid message/);
+ await db.exec("select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false)");assert.equal(await scalar('select count(*)::int v from aria_messages'),0);await assert.rejects(db.query('select * from aria_message_page()'),/Access denied/);await assert.rejects(rpc('aria_message_save',JSON.stringify(batch)),/Access denied/);
+ await db.exec(`select set_config('request.jwt.claim.sub','${owner}',false)`);
+ const id=crypto.randomUUID();await rpc('aria_reminder_save',id,'tea',new Date(Date.now()+600000).toISOString(),'Asia/Shanghai','Tea time.');await db.exec('reset role');await db.query("update aria_reminders set due_at=now()-interval '1 minute' where id=$1",[id]);await db.exec('set role authenticated');
+ const claimed=(await db.query('select * from aria_reminder_claim()')).rows;assert.equal(claimed.length,1);await rpc('aria_reminder_conversations');assert.equal(await scalar("select count(*)::int v from aria_messages where message->>'event'='reminder.due'"),1);
+ const sub={endpoint:'https://fcm.googleapis.com/test',keys:{auth:'a'.repeat(22),p256dh:'b'.repeat(87)}};await rpc('aria_push_subscribe',JSON.stringify(sub));assert.equal((await rpc('aria_notification_targets',id)).length,1);await rpc('aria_notification_ack',id,crypto.randomUUID(),sub.endpoint);assert.equal((await rpc('aria_notification_targets',id)).length,1);await rpc('aria_notification_ack',id,claimed[0].push_lease,sub.endpoint);assert.equal((await rpc('aria_notification_targets',id)).length,0);
+ const q=await rpc('aria_quick_enqueue',crypto.randomUUID(),'Leave early','detailed',null),claim=await rpc('aria_quick_claim');const fallback=await scalar('select id v from aria_vaults where is_unsorted');
+ const content='---\nai_enabled: false\nsource: quick-note\nquick_note_id: '+q.id+'\n---\n# Transit\n\nLeave early.';
+ const saved=await rpc('aria_quick_finish',q.id,claim.lease_token,fallback,'Transit.md',content,.9);assert.equal(saved.ok,true);assert.equal((await rpc('aria_quick_status',q.id)).status,'filed');assert.equal(await scalar("select count(*)::int v from aria_messages where message->>'event'='note.filed'"),1);
+ console.log('PASS: repeatable migration, retained chat import, idempotent message batches, cursor paging, role isolation, reminder delivery, stale lease rejection, per-device receipts, atomic note completion message.');
+}finally{await db.close();}

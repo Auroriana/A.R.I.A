@@ -13,6 +13,11 @@ export function workerAuthorized(header,secret) {
 export async function quickRoutes({req,route,url,token,sb,fail,send,readBody,generate}) {
   if (!route.startsWith('/api/quick-') && route!=='/api/vault-quick') return false;
   const rpc=(name,body)=>sb('/rest/v1/rpc/'+name,token,body);
+  if(req.method==='GET'&&route==='/api/quick-status'){
+    const id=url.searchParams.get('id');if(!isUuid(id))throw fail('Choose a quick note.');
+    const note=await rpc('aria_quick_status',{p_id:id});if(!note)throw fail('Note not found.',404);
+    send(200,{note});return true;
+  }
   if (req.method==='GET' && route==='/api/quick-list') {
     const offset=Number(url.searchParams.get('offset')??0);
     if (!Number.isInteger(offset)||offset<0||offset>100000) throw fail('Invalid page.');

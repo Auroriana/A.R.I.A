@@ -1,9 +1,9 @@
 self.addEventListener('push',event=>{
  let data;try{data=event.data.json();}catch{return;}
- event.waitUntil(self.registration.showNotification('Capri',{body:data.body,tag:data.id,icon:'/capri-avatar.avif',data:{chat:data.id},requireInteraction:true}));
+ event.waitUntil(self.registration.showNotification('Capri',{body:data.body,tag:data.messageId||data.id,icon:'/capri-profile.avif',data:{message:data.messageId||data.id+'/opening'},requireInteraction:true}));
 });
 self.addEventListener('notificationclick',event=>{
- event.notification.close();const id=event.notification.data?.chat;
- if(!/^[0-9a-f-]{36}$/i.test(id||''))return;
- event.waitUntil(clients.openWindow('/?chat='+encodeURIComponent(id)));
+ event.notification.close();const id=event.notification.data?.message||(event.notification.data?.chat&&event.notification.data.chat+'/opening');
+ if(typeof id!=='string'||id.length>100)return;
+ event.waitUntil((async()=>{const windows=await clients.matchAll({type:'window',includeUncontrolled:true});const existing=windows.find(w=>new URL(w.url).origin===self.location.origin);if(existing){await existing.focus();existing.postMessage({type:'capri:notification',messageId:id});}else await clients.openWindow('/?message='+encodeURIComponent(id));})());
 });

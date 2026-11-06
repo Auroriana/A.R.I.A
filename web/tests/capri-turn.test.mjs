@@ -15,10 +15,10 @@ test('a reaction gets a single speaking call with owner calibration and the prev
  assert.equal(calls,1);assert.equal(reply.answer,'Who, me?');assert.equal(reply.expression,'amused_interest');
 });
 
-test('delegation respects attachments and private-note settings',async()=>{
+test('delegation infers note retrieval without a manual mode and still inspects attachments',async()=>{
  for(const [choice,hasAttachments] of [['vault',false],['reply',true]]){
   const result=await personalize({body:{action:'turn',message:'Take a look.',mode:'general',hasAttachments,settings:{memory:false}},generate:async()=>({answer:JSON.stringify({route:choice,answer:'premature',expression:'unknown'})})});
-  assert.equal(result.route,'reasoning');assert.equal(result.answer,'');assert.equal(result.expression,'neutral_attention');
+  assert.equal(result.route,choice==='vault'?'vault':'reasoning');assert.equal(result.answer,'');assert.equal(result.expression,'neutral_attention');
  }
 });
 

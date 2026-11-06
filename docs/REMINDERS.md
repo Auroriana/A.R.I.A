@@ -1,0 +1,30 @@
+# Conversational capture, agenda and notifications
+
+From the chat composer, use `Note this for me, ...` to save the original into the existing durable Quick Note queue. Filing is kicked in the background; an unavailable model does not discard the saved note. Use `Remind me about ... in 10 minutes` or `Remind me to ... tomorrow at 9 am` to schedule directly. Times use the device's time zone, which is stored alongside the UTC deadline. Other date wording or a missing time opens a date/time picker. Explicit commands trigger writes; ordinary conversation and quoted commands do not. Dates are shown in the acknowledgement. Plans must be explicitly scheduled as reminders; incidental promises in old chat history are not silently converted into alarms.
+
+On sign-in the loading screen waits for server chat sync and the agenda. Failure keeps the loader visible with Retry sync; it does not reveal a misleading empty history. The default popup includes today's incomplete plans and overdue reminders. Its opening is saved before display. Reopening the site reuses that day’s agenda conversation and preserves existing replies. Closing keeps it in History; replying continues that conversation. The REMINDERS button shows all pending items and lets you mark them done. While open, a 30-second poll initiates reminder conversations without interrupting a reply in progress. Returning to a hidden/offline page checks again. The existing recent-chat limit and History archive remain in effect. Reminder conversations have stable server/client IDs to merge across devices and retries. A dismissed reminder remains incomplete until marked Done.
+
+Each reminder gets a brief generated notification using the current Capri personality prompt, with the exact reminder appended separately. The line is generated once at scheduling time, so model outages at delivery do not block alarms. Quota/model failures fall back to a simple reminder line. This version supports one-time reminders within a year; it does not infer recurring schedules or initiate unrelated unsolicited conversations.
+
+## Activate in the deployed app
+
+1. From `web`, run `npm ci`. Vercel's root directory remains `web`; `vercel.json` now installs production dependencies with `npm ci --omit=dev`.
+2. Apply `014_reminders.sql` and `015_reminder_push.sql` after the existing migrations through 013. They add owner-scoped reminders, browser subscriptions, leased delivery claims and persisted reminder conversations. The existing owner check is reused. No production migrations were applied by this change.
+3. Generate a VAPID key pair with `npx web-push generate-vapid-keys` in a secure terminal. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` (a real contact mailto: or HTTPS URL) in the deployed server settings. Keep the private key stable and secret. Set a random 32+ character `REMINDER_WORKER_SECRET`, plus the existing `ARIA_EMAIL` and `ARIA_PASSWORD` for the configured owner account. The worker uses the existing Supabase publishable key and password login, not a service-role key.
+4. Deploy, then set Supabase Vault secrets `aria_reminder_worker_url` to the deployed `/api/reminder-worker` HTTPS endpoint and `aria_reminder_worker_secret` to the matching worker secret. Apply `016_reminder_cron.sql` to check due reminders every minute. Configure the existing Quick Note worker too if notes should be filed after closing the app.
+5. In Capri's startup popup or REMINDERS view choose Enable notifications. This is an explicit browser permission action. On supported iPhone/iPad versions install to the Home Screen and open the standalone app first. Disable notifications on this device removes its subscription. Delivery depends on browser/OS support, device connectivity, and OS notification policy; it is not a precise-time alarm system.
+6. Smoke-test a reminder on a non-sensitive topic with the site closed. Confirm the personality notification arrives, opens its saved chat, accepts a reply, and appears on another signed-in device. These real delivery checks need deployed credentials and have not been performed locally.
+
+Allow HTTPS egress to the chosen Supabase project, Google's model API, and supported browser push providers (`fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`, or the subscribed Windows notification host). The subscription API and sender restrict endpoints to supported providers. The worker honors HTTPS_PROXY and retains TLS verification. Inactive subscriptions are removed on HTTP 404/410; other failures retry after five minutes. Delivery is at least once: an ambiguous send or partial device failure can repeat a notification, with the stable tag replacing the same reminder where the OS supports it.
+
+## Future desktop and mobile apps
+
+Schedules, completion state, personality text and chat identity belong to the server. `/api/capture`, `/api/agenda`, `/api/reminder-complete`, and existing chat APIs are the shared application contract. `lib/reminder-push.js` is the browser delivery adapter; `deliverReminders` accepts an injected delivery function for tests and future adapters. Add owner-bound APNs/FCM/native device registrations and transport adapters for iOS/Android/Electron without moving scheduling into a browser timer. Native clients must preserve owner authentication and idempotency keys. No Electron or native binary is built by this change.
+
+## Validation
+
+- `npm test`: unit/API suites; six pre-existing repository failures remain.
+- `npm run test:agenda:sql`: embedded PostgreSQL checks of migrations, account isolation, idempotency, delivery claims and completion; no external database needed.
+- `CHROMIUM_PATH=/path/to/chromium npm run test:agenda:browser`: real browser/IndexedDB with fixture APIs, including popup, history, continuation and capture.
+
+The loading eyes and floating mascot share `public/capri-eyes.png`; the focused state uses `public/capri-eyes-focused.png`. `public/agenda.css` controls gentle shape changes, blur/glow and reduced-motion behavior. Replace `.loading-eyes` content with a future animation without changing the sync readiness logic.

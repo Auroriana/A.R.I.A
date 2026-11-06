@@ -6,7 +6,7 @@ export function reminderChat(r,model){
 async function dailyId(owner){
  const day=localDateTime(new Date()).slice(0,10),bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('capri-agenda:'+owner+':'+day))).slice(0,16);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const h=[...bytes].map(n=>n.toString(16).padStart(2,'0')).join('');return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
 }
-export function mountAgenda({api,owner,busy,ready=()=>true,model,save,open,reply,onError,settings}){
+export function mountAgenda({api,owner,busy,ready=()=>true,model,save,open,reply,onError,settings,onDue=()=>{},openOverview=()=>{}}){
  const node=(tag,text)=>{const n=document.createElement(tag);if(text)n.textContent=text;return n;};
  const popup=node('dialog');popup.className='agenda-dialog';popup.setAttribute('aria-label','A moment with Capri');
  const heading=node('h2','Hey. Here’s what’s on today.'),body=node('div'),form=node('form'),input=node('textarea');input.placeholder='Talk to Capri about this…';input.setAttribute('aria-label','Reply to Capri');input.required=true;input.maxLength=4000;
@@ -24,38 +24,23 @@ export function mountAgenda({api,owner,busy,ready=()=>true,model,save,open,reply
   await api('push-subscribe',{subscription:subscription.toJSON()});status.textContent='Notifications enabled on this device. Capri can reach you when the site is closed.';push.hidden=true;disable.hidden=false;
  }catch(e){status.textContent=e.message;}finally{push.disabled=false;}};
  async function check(initial=false,all=false){
-  const who=owner();if(!who||checking||busy()||(!initial&&(document.hidden||!ready())))return;
+  const who=owner();if(!who||checking||(!initial&&(document.hidden||!ready())))return;
   checking=true;
   try{
-   const {reminders}=await api('agenda');if(owner()!==who)return;
+   const {reminders,archiveWarning}=await api('agenda?timezone='+encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone));if(owner()!==who)return;if(archiveWarning)onError('Reminder overview sync pending: '+archiveWarning);
    if(account!==who){account=who;seen=new Set();}
-   const now=Date.now(),today=new Date().toDateString(),due=reminders.filter(r=>Date.parse(r.due_at)<=now),relevant=reminders.filter(r=>Date.parse(r.due_at)<=now||new Date(r.due_at).toDateString()===today);
-   for(const r of due)if(!seen.has(r.id))await save(reminderChat(r,model()),who);
-   const fresh=due.filter(r=>!seen.has(r.id));if(!initial&&!fresh.length)return;
-   if(popup.open||busy())return;
-   const rows=initial?(all?reminders:relevant):fresh;
-   heading.textContent=all?'Your reminders.':initial?'Hey. Here’s what’s on today.':'Hey, it’s time.';
-   const text=rows.length?'Here’s what we have coming up.\n\n'+rows.map(r=>(r.notification?r.notification+'\n':'')+'• '+r.text+' — '+new Date(r.due_at).toLocaleString()+(Date.parse(r.due_at)<now?' (due)':'')).join('\n\n'):'You’re here. What are we getting into today? You have no saved reminders or plans due today.';
-   const todayId=initial?await dailyId(who):null;
-   activeChat=initial?{id:todayId,title:'Today with Capri · '+new Date().toLocaleDateString(),updated:now,mode:'general',vault:'all',model:model(),messages:[{id:todayId+'/opening',turn:todayId+'/opening',started:Date.parse(localDateTime(new Date()).slice(0,10)+'T00:00:00Z'),edited:now,role:'model',text}]}:reminderChat(fresh[0],model());
-   // Save before showing; dismissing the dialog never discards the conversation.
-   activeChat=await save(activeChat,who)||activeChat;if(owner()!==who)return;
-   body.replaceChildren(node('p',text));
-   for(const r of rows){const done=node('button','Done · '+r.text.slice(0,45));done.type='button';done.onclick=async()=>{done.disabled=true;try{const result=await api('reminder-complete',{key:r.id});if(!result.ok)throw Error('Reminder was not found.');done.textContent='Completed';}catch(e){done.disabled=false;status.textContent=e.message;}};body.append(done);}
-   for(const r of due)seen.add(r.id);
-   if(!initial&&fresh.length>1){activeChat={...activeChat,id:crypto.randomUUID(),title:'Reminders from Capri',messages:[{id:crypto.randomUUID(),started:now,role:'model',text}]};await save(activeChat,who);}
-   disable.hidden=!('Notification' in window)||Notification.permission!=='granted';push.hidden=false;status.textContent='This conversation is saved in History.';popup.showModal();
+   const now=Date.now(),due=reminders.filter(r=>Date.parse(r.due_at)<=now);
+   if(due.some(r=>!seen.has(r.id)))onDue();for(const r of due)seen.add(r.id);
+   if(!initial||popup.open||!reminders.length)return;
+   heading.textContent='Your reminders';form.hidden=false;
+   body.replaceChildren();for(const r of reminders){const row=node('div'),text=node('p',r.text+' — '+new Date(r.due_at).toLocaleString()),done=node('button','Done');done.type='button';done.onclick=async()=>{done.disabled=true;try{await api('reminder-complete',{key:r.id,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});row.remove();}catch(e){done.disabled=false;status.textContent=e.message;}};row.append(text,done);body.append(row);}
+   const overview=node('button','Open overview in Notes');overview.type='button';overview.onclick=async()=>{try{const data=await api('reminder-overview',{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});popup.close();await openOverview(data.note);}catch(e){status.textContent=e.message;}};body.append(overview);
+   disable.hidden=!('Notification' in window)||Notification.permission!=='granted';push.hidden=false;status.textContent='Reminders arrive in your chat.';popup.showModal();
   }catch(e){if(initial)throw e;if(owner()===who)onError('Could not load reminders: '+e.message);}finally{checking=false;}
  }
  setInterval(()=>check(),30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});window.addEventListener('online',()=>check());
- return {check,clear(){popup.close();seen.clear();account='';},async capture(message,key){
-  const intent=captureIntent(message);if(!intent)return null;
-  let due;
-  if(intent.kind==='reminder'&&scheduledTime(intent.text))due=scheduledTime(intent.text).toISOString();
-  if(intent.kind==='reminder'&&!due)due=await new Promise(resolve=>{
-   const d=node('dialog');d.className='agenda-dialog';const f=node('form'),label=node('label','When should I remind you?'),date=node('input'),ok=node('button','Set reminder'),cancel=node('button','Cancel');date.type='datetime-local';date.required=true;date.min=localDateTime(new Date(Date.now()+60000));date.value=localDateTime(relativeTime(intent.text)||new Date(Date.now()+3600000));label.append(date);cancel.type='button';let value=null;cancel.onclick=()=>d.close();f.append(node('p',intent.text),label,node('p',Intl.DateTimeFormat().resolvedOptions().timeZone),ok,cancel);d.append(f);document.body.append(d);f.onsubmit=e=>{e.preventDefault();const time=new Date(date.value);if(time<=new Date()){date.setCustomValidity('Choose a future time.');date.reportValidity();return;}value=time.toISOString();d.close();};date.oninput=()=>date.setCustomValidity('');d.onclose=()=>{d.remove();resolve(value);};d.showModal();
-  });
-  if(intent.kind==='reminder'&&!due)return {cancelled:true};
-  return {key,message,due,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,settings:settings()};
+ return {check,settings(){heading.textContent='Notifications';body.replaceChildren(node('p','Reminder overviews are saved in the Reminders vault inside Notes.'));form.hidden=true;disable.hidden=!('Notification' in window)||Notification.permission!=='granted';push.hidden=false;status.textContent='';popup.showModal();},clear(){popup.close();seen.clear();account='';},async capture(message,key){
+  const intent=captureIntent(message);if(!intent)return null;const due=intent.kind==='reminder'?scheduledTime(intent.text)?.toISOString():undefined;
+  return {key,message,due,needsTime:intent.kind==='reminder'&&!due,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,settings:settings()};
  }};
 }

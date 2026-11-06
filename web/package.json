@@ -9,7 +9,9 @@
     "dev": "node --env-file-if-exists=.env.local dev.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:agenda:sql": "node tests/agenda-sql.mjs",
-    "test:agenda:browser": "node tests/agenda-browser.mjs"
+    "test:agenda:browser": "node tests/conversation-browser.mjs",
+    "test:conversation:sql": "node tests/conversation-sql.mjs",
+    "test:conversation:browser": "node tests/conversation-browser.mjs"
   },
   "dependencies": {
     "web-push": "3.6.7"

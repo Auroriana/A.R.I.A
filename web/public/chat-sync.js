@@ -1,5 +1,6 @@
-const messageFields=['id','turn','started','edited','role','text','expression','sources','usage','citationWarning','personalityResearch','web','ack'];
+const messageFields=['id','turn','started','edited','role','text','expression','sources','usage','citationWarning','personalityResearch','web','ack','blocks','note','event','reminder','captureJob'];
 const pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value[k]!==undefined).map(k=>[k,value[k]]));
+export const portableMessage=m=>({...pick(m,messageFields),text:m.personality||m.reasoningText||m.text});
 
 export function identifyMessages(chat){
   let turn,started;
@@ -15,7 +16,7 @@ export function portableChat(chat){
   identifyMessages(chat);
   const completed=new Set(chat.messages.filter(m=>m.role==='model'&&!m.personalityPending).map(m=>m.turn));
   return {...pick(chat,['id','title','updated','mode','vault','model']),
-    messages:chat.messages.filter(m=>completed.has(m.turn)&&!m.personalityPending).map(m=>({...pick(m,messageFields),text:m.personality||m.reasoningText||m.text}))};
+    messages:chat.messages.filter(m=>completed.has(m.turn)&&!m.personalityPending).map(portableMessage)};
 }
 
 // Keep the two sides of a turn together even when two offline devices append
