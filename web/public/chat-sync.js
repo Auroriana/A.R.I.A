@@ -1,4 +1,4 @@
-const messageFields=['id','turn','started','edited','role','text','expression','sources','usage','citationWarning','personalityResearch','web','ack','blocks','note','event','reminder','captureJob'];
+const messageFields=['id','turn','started','edited','role','text','expression','sources','usage','citationWarning','personalityResearch','web','ack','blocks','note','event','reminder','captureJob','replyTo','sentAt'];
 const pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value[k]!==undefined).map(k=>[k,value[k]]));
 export const portableMessage=m=>({...pick(m,messageFields),text:m.personality||m.reasoningText||m.text});
 

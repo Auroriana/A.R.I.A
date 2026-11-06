@@ -8,6 +8,6 @@ export function citationMap(answer,sources=[]){
 }
 
 export function personalityHandoff(body,result){
- return {action:'rewrite',message:body.message,answer:result.answer,history:body.history??[],overview:body.overview??[],settings:body.settings,concise:body.concise,
+ return {action:'rewrite',pendingReplies:body.pendingReplies,message:body.message,answer:result.answer,history:body.history??[],overview:body.overview??[],settings:body.settings,concise:body.concise,
   sourceBasis:result.research?.reusedSources?'snapshot':'draft',snapshotCapturedAt:result.research?.snapshotCapturedAt??null,vaultSearches:result.research?.searches??0,citationSources:citationMap(result.answer,result.sources??[])};
 }

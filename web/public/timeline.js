@@ -5,9 +5,13 @@ async function read(owner){const d=await db();return new Promise((resolve,reject
 async function update(owner,fn){const d=await db();return new Promise((resolve,reject)=>{const tx=d.transaction('accounts','readwrite'),s=tx.objectStore('accounts'),r=s.get(owner);r.onsuccess=()=>s.put(fn(r.result||{outbox:{},recent:[],state:null,migrated:false}),owner);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}
 export function mergeMessages(...lists){const map=new Map();for(const m of lists.flat()){const old=map.get(m.id);if(!old||m.edited>=old.edited)map.set(m.id,{...old,...m});}return [...map.values()].sort((a,b)=>a.started-b.started||a.turn.localeCompare(b.turn)||Number(a.role==='model')-Number(b.role==='model')||a.id.localeCompare(b.id));}
 export function createTimeline({api,owner,legacy}){
- let persisted=new Map(),latest=0,before=null,more=false;
+ let persisted=new Map(),latest=0,before=null,more=false,refresh=false;
  return {
   get hasMore(){return more;},
+  async context(){const account=owner(),cache=await read(account);let rows=cache.recent;
+   if(rows.length<120){let page=await api('messages');rows=mergeMessages(rows,page.messages);let cursor=Math.min(...page.messages.map(m=>m.seq));for(let i=0;i<2&&page.hasMore;i++){page=await api('messages?before='+cursor);rows=mergeMessages(rows,page.messages);cursor=Math.min(cursor,...page.messages.map(m=>m.seq));}}
+   if(owner()!==account)return [];await update(account,s=>({...s,recent:mergeMessages(s.recent,rows).slice(-120)}));return rows;
+  },
   async load(){
    const account=owner(),local=await read(account);
    if(!local.migrated){
@@ -16,11 +20,11 @@ export function createTimeline({api,owner,legacy}){
     const interrupted=[...chats].sort((a,b)=>b.updated-a.updated).find(c=>c.pending||c.capture);
     await update(account,s=>({...s,state:s.state||(interrupted?{id:interrupted.id,pending:interrupted.pending,capture:interrupted.capture}:null),migrated:true,outbox:{...Object.fromEntries(chats.flatMap(c=>c.messages).map(m=>[m.id,m])),...s.outbox}}));
    }
-   const page=await api('messages');if(owner()!==account)return null;
-   const cache=await read(account);latest=Math.max(0,...page.messages.map(m=>m.seq||0));before=Math.min(Infinity,...page.messages.map(m=>m.seq||Infinity));more=page.hasMore;
+   const cached=await read(account);const page=cached.recent.length?{messages:cached.recent,hasMore:true}:await api('messages');if(owner()!==account)return null;
+   const cache=await read(account);refresh=!!cached.recent.length;latest=cached.recent.length?0:Math.max(0,...page.messages.map(m=>m.seq||0));before=Math.min(Infinity,...page.messages.map(m=>m.seq||Infinity));more=page.hasMore;
    const interrupted=cache.recent.filter(m=>m.id===cache.state?.pending?.turnId||m.id===cache.state?.capture?.key);
    const messages=mergeMessages(page.messages,interrupted,Object.values(cache.outbox));persisted=new Map(messages.map(m=>[m.id,JSON.stringify(m)]));
-   return {...cache.state,messages};
+   const state=cache.state||{};if(state.activeBatch&&!state.pending&&!state.capture){state.inputQueue=[...state.activeBatch,...(state.inputQueue||[])];delete state.activeBatch;}return {...state,messages};
   },
   async save(chat){
    identifyMessages(chat);const changed=chat.messages.filter(m=>persisted.get(m.id)!==JSON.stringify(m));
@@ -37,12 +41,12 @@ export function createTimeline({api,owner,legacy}){
     await api('messages-save',{messages:batch.map(portableMessage)});
     await update(account,s=>{for(const m of batch)if(JSON.stringify(s.outbox[m.id])===JSON.stringify(m))delete s.outbox[m.id];return s;});
    }
-   const found=[];let hasMore=true;
+   const found=[];if(refresh){const page=await api('messages');if(owner()!==account)return [];found.push(...page.messages);latest=Math.max(0,...page.messages.map(m=>m.seq||0));more=page.hasMore;refresh=false;}let hasMore=true;
    while(hasMore&&owner()===account){const page=await api('messages?after='+latest);if(owner()!==account)return [];found.push(...page.messages);for(const m of page.messages)latest=Math.max(latest,m.seq||0);hasMore=page.hasMore;}
-   if(owner()===account)for(const m of found)persisted.set(m.id,JSON.stringify(m));
+   if(owner()===account){for(const m of found)persisted.set(m.id,JSON.stringify(m));await update(account,s=>({...s,recent:mergeMessages(s.recent,found).slice(-120)}));}
    return owner()===account?found:[];
   },
   async older(){if(!more||!Number.isFinite(before))return [];const account=owner(),page=await api('messages?before='+before);if(owner()!==account)return [];more=page.hasMore;for(const m of page.messages){before=Math.min(before,m.seq);persisted.set(m.id,JSON.stringify(m));}return page.messages;},
-  clear(){persisted.clear();latest=0;before=null;more=false;}
+  clear(){persisted.clear();latest=0;before=null;more=false;refresh=false;}
  };
 }

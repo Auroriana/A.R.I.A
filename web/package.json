@@ -11,7 +11,8 @@
     "test:agenda:sql": "node tests/agenda-sql.mjs",
     "test:agenda:browser": "node tests/conversation-browser.mjs",
     "test:conversation:sql": "node tests/conversation-sql.mjs",
-    "test:conversation:browser": "node tests/conversation-browser.mjs"
+    "test:conversation:browser": "node tests/conversation-browser.mjs",
+    "test:chat:browser": "node tests/chat-refinement-browser.mjs"
   },
   "dependencies": {
     "web-push": "3.6.7"
