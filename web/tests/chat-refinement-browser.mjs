@@ -1,3 +1,4 @@
+import {externalModels} from '../lib/multi-provider.js';
 import {chromium} from 'playwright-core';
 import http from 'node:http';
 import {readFile,mkdir} from 'node:fs/promises';
@@ -15,7 +16,7 @@ const server=http.createServer(async(req,res)=>{try{
  switch(url.pathname){
  case '/api/status':data={configured:true,geminiReady:true,models:[{id:'gemini-3.5-flash-lite',name:'Flash'}]};break;
  case '/api/session':data={email:'fixture@example.com'};break;
- case '/api/core-settings':data={defaults,models:coreModels};break;
+ case '/api/core-settings':data={defaults,models:[...coreModels,...externalModels.filter(m=>!coreModels.some(x=>x.id===m.id))]};break;
  case '/api/vaults':data={vaults:[{id:vault,name:'Reminders',description:'Dated reminder overviews',allow_auto_file:false}]};break;
  case '/api/notes':data={notes:[{path:'Overviews/2026-11-06.md',title:'Reminders · today',version:1,ai_enabled:true}]};break;
  case '/api/note-read':data={path:b.path,content:'# Reminder overview\n\nSnapshot: 2026-11-06\n\n- Tea',version:1};break;
@@ -44,8 +45,17 @@ try{
  await page.goto('http://127.0.0.1:'+server.address().port);await page.locator('#capri-loading').waitFor({state:'hidden'});
  assert.equal(await page.locator('.agenda-dialog').count(),0);
  const send=async text=>{await page.locator('#q').fill(text);await page.locator('#send').click();};
+ // Growth must be reversible on deletion and on send, including mobile widths.
+ await page.setViewportSize({width:390,height:844});
+ const baseHeight=await page.locator('#q').evaluate(n=>n.getBoundingClientRect().height);
+ await page.locator('#q').fill('line\n'.repeat(12));
+ assert.ok(await page.locator('#q').evaluate(n=>n.getBoundingClientRect().height)>baseHeight);
+ await page.locator('#q').fill('');
+ assert.equal(await page.locator('#q').evaluate(n=>n.getBoundingClientRect().height),baseHeight);
+ await page.locator('#q').fill('line\n'.repeat(12));
+ await page.locator('#q').evaluate(n=>{n.value='Yo capri';});
  // Sending starts a request immediately, without advancing the clock.
- await send('Yo capri');await Promise.race([firstStarted,new Promise((_,reject)=>setTimeout(()=>reject(Error('First request missing: '+JSON.stringify(errors))),15000))]);
+ await page.locator('#send').click();assert.equal(await page.locator('#q').evaluate(n=>n.getBoundingClientRect().height),baseHeight);await page.setViewportSize({width:1440,height:960});await Promise.race([firstStarted,new Promise((_,reject)=>setTimeout(()=>reject(Error('First request missing: '+JSON.stringify(errors))),15000))]);
  await send('YOOO reply already');await send('REPLY ALREADY I NEED YOU');
  assert.equal(turns.length,1);releaseFirst();
  await page.waitForFunction(()=>document.querySelector('[data-delivery]'));
@@ -94,6 +104,15 @@ try{
  // Same-message sync must preserve the live DOM node.
  await page.evaluate(()=>window.keptBubble=document.querySelector('#msgs>.m'));await page.clock.fastForward(31000);await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>window.keptBubble===document.querySelector('#msgs>.m')),true);
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:new URL('chat-refined-mobile.png',output).pathname.replace(/^\/(.:)/,'$1')});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ for(const width of [320,390]){
+  await page.setViewportSize({width,height:844});
+  const layout=await page.evaluate(()=>{
+   const send=document.querySelector('#send').getBoundingClientRect(),svg=document.querySelector('#send svg').getBoundingClientRect(),m=document.querySelector('#msgs .m.model'),a=getComputedStyle(m,'::before'),bubble=m.querySelector('.md').getBoundingClientRect();
+   return {sendWidth:send.width,sendHeight:send.height,icon:svg.width,gap:bubble.left-m.getBoundingClientRect().left-parseFloat(a.width),overflow:document.documentElement.scrollWidth>innerWidth};
+  });
+  assert.ok(layout.sendWidth>=44&&layout.sendHeight>=44);assert.equal(layout.icon,22);assert.ok(layout.gap>=10);assert.equal(layout.overflow,false);
+ }
+ await page.setViewportSize({width:390,height:844});
  const replyBounds=await page.locator('#msgs .message-reply').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect(),next=n.closest('.m').nextElementSibling?.getBoundingClientRect();return {right:r.right,bottom:r.bottom,nextTop:next?.top};}));
  assert.ok(replyBounds.every(r=>r.right<=390),'reply controls stay inside the mobile viewport');
  assert.ok(replyBounds.every(r=>r.nextTop===undefined||r.bottom<=r.nextTop),'reply controls do not collide with the next bubble');
@@ -116,5 +135,11 @@ try{
  assert.ok(menuBounds.left>=0&&menuBounds.right<=390,'open menu stays inside mobile viewport');
  assert.ok(menuBounds.top>=menuBounds.scrollTop&&menuBounds.bottom<=menuBounds.scrollBottom,'open menu stays above the composer');
  await page.screenshot({path:new URL('chat-metadata-menu.png',output).pathname.replace(/^\/(.:)/,'$1')});
- assert.deepEqual(errors,[]);console.log('PASS: immediate sends, in-flight follow-ups, stale reply suppression, paced bubbles, mid-delivery reload, interruption, reply context, reminders, menus, no blink, desktop/mobile');
+ await page.clock.runFor(10000);await page.locator('#aria-settings').click();
+ await page.locator('[data-tandem]').click();assert.equal(await page.locator('[name=router]').inputValue(),'groq:openai/gpt-oss-120b');assert.equal(await page.locator('[name=reasoning]').inputValue(),'gemini-3.5-flash-lite');
+ await page.locator('#core-settings details').filter({hasText:'Provider API keys'}).locator('summary').click();
+ await page.locator('[name=credentialProvider]').selectOption('nim');await page.locator('[name=providerKey]').fill('dummy-browser-test-key');await page.locator('[data-save-key]').click();
+ await page.waitForFunction(()=>document.querySelector('[name=providerKey]').value===''&&!document.querySelector('[data-save-key]').disabled);
+ assert.equal(await page.evaluate(()=>Object.values(localStorage).some(v=>v.includes('dummy-browser-test-key'))),false);
+ await page.locator('[name=councilEnabled]').check();assert.equal(await page.locator('[name=councilModels] option:checked').count(),2);await page.locator('#core-settings button[type=submit]').click();assert.deepEqual(errors,[]);console.log('PASS: immediate sends, in-flight follow-ups, stale reply suppression, paced bubbles, mid-delivery reload, interruption, reply context, reminders, menus, no blink, desktop/mobile');
 }finally{await browser?.close();server.closeAllConnections();server.close();}

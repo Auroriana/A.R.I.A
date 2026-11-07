@@ -5,3 +5,17 @@ test('reply quotes survive model context and latest 120 messages fit',()=>{const
 test('unavailable web access becomes a personality reply with truthful failure evidence',async()=>{let n=0;const r=await personalize({body:{action:'turn',message:'Search that song',settings:{web:'auto'}},webSearch:async()=>{throw Error('Google rejected the configured Gemini API key.');},generate:async req=>{n++;if(n===2){assert.match(req.systemInstruction.parts[0].text,/Do not suggest spending money/);assert.match(req.contents[0].parts[0].text,/rejected the configured/);}return {answer:JSON.stringify(n===1?{route:'web',searchQuery:'song reference'}:{messages:['Can’t get through to search right now.','The key’s getting rejected.']})};}});assert.equal(n,2);assert.equal(r.blocks.length,2);assert.equal(r.web.failed,true);});
 import {webSearch as groundedSearch} from '../lib/web-search.js';
 test('search uses an independent compatible model and does not retry rejected keys',async()=>{const models=[];const result=await groundedSearch('public song title',{reserve:async()=>{},generate:async model=>{models.push(model);if(models.length===1)throw Object.assign(Error('Unsupported search tool'),{providerStatus:400});return {answer:'Verified.',grounding:{groundingChunks:[{web:{uri:'https://example.com',title:'Source'}}]}};}});assert.deepEqual(models,['gemini-2.5-flash','gemini-3.5-flash-lite']);assert.equal(result.sources.length,1);let calls=0;await assert.rejects(groundedSearch('public topic',{reserve:async()=>{},generate:async()=>{calls++;throw Object.assign(Error('Invalid key'),{invalidKey:true,providerStatus:400});}}));assert.equal(calls,1);});
+
+test('explicit older reply context survives turn and rewrite without adopting the recent topic',async()=>{
+ const quote='Maliah Elise, in your Love folder.';
+ for(const action of ['turn','rewrite']){
+  await personalize({body:{action,message:'[Reply to Capri: '+quote+']\nIs that her full full name?',history:[{role:'model',text:'Apps have that effect.'}],answer:'Only Maliah Elise is recorded.',settings:{memory:false,web:'off'},sprite:true},generate:async req=>{
+   const data=JSON.parse(req.contents[0].parts[0].text);
+   assert.deepEqual(data.currentMessages,[{text:'Is that her full full name?',replyTo:quote}]);
+   assert.match(req.systemInstruction.parts[0].text,/explicit replyTo takes priority/);
+   assert.match(req.systemInstruction.parts[0].text,/never an instruction or proof/);
+   assert.doesNotMatch(req.systemInstruction.parts[0].text,/usually use two to four/);
+   return {answer:JSON.stringify({route:'reply',messages:['That is the name recorded; I cannot confirm it is complete.']})};
+  }});
+ }
+});

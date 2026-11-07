@@ -1,3 +1,4 @@
+import {createCouncil,councilStep} from './model-council.js';
 import {selectPassages} from './retrieval-selection.js';
 import { extractLinks } from '../public/note-model.js';
 import {DEEP_PLAN,DEEP_ANSWER,VERIFY_SYSTEM,parseVerdict} from './mirage.js';
@@ -90,7 +91,7 @@ function evidenceFor(state) {
   [...state.sources].sort((a,b)=>(b.relevance||0)-(a.relevance||0)||(b.matches||1)-(a.matches||1)||b.seenAt-a.seenAt).forEach(s=>{if(chars+s.content.length<=RAG_LIMITS.evidenceChars){included.add(s.key);chars+=s.content.length;}});
   return state.sources.map((s,i)=>({id:'S'+(i+1),title:s.title,path:s.source_path,vault:s.vault_name,references:extractLinks(s.content).map(r=>r.target),...(included.has(s.key)?{content:s.content}:{passageOmitted:true})}));
 }
-export async function researchStep({state,message,search,generate,concise=false,onProgress=()=>{},files=[],history=[],overview=async()=>[],route=false,followup=null,deep=false,timezone='UTC'}) {
+async function baseResearchStep({state,message,search,generate,concise=false,onProgress=()=>{},files=[],history=[],overview=async()=>[],route=false,followup=null,deep=false,timezone='UTC'}) {
   state.calendar??={timestamp:new Date().toISOString(),timezone,localDate:new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format()};
   // Prior citation IDs belong to earlier responses, never this request's evidence map.
   history=history.map(m=>({...m,text:m.text.replace(/ ?\[(?:[SP]\d+)(?:\s*[,;]\s*[SP]\d+)*\]/g,'')}));
@@ -187,6 +188,12 @@ export async function researchStep({state,message,search,generate,concise=false,
   if(state.deep&&!['vaults','context'].includes(state.intent)&&state.verifyRounds<2){state.draft={answer:result.answer,truncated:!!result.truncated};state.review=[];state.phase='verify';return {state};}
   if(state.deep&&state.review.length)state.warnings.push('The last revision was not re-checked. Earlier checks flagged: '+state.review.join(' | ').slice(0,600));
   return {result:{...result,sources:state.sources.map((s,i)=>({id:'S'+(i+1),title:s.title,path:s.source_path,vault:s.vault_name,excerpt:s.content,...(state.snapshotCapturedAt?{snapshotCapturedAt:state.snapshotCapturedAt}:{}),read:usable.has('S'+(i+1)),cited:cited.has('S'+(i+1))})),research:{searches:state.searches.length,planningCalls:state.planningCalls,verifyRounds:state.verifyRounds,warnings:state.warnings,...(state.snapshotCapturedAt?{reusedSources:true,snapshotCapturedAt:state.snapshotCapturedAt}:{})}}};
+}
+export async function researchStep(options){
+ const {state,council,generate,message,onProgress}=options;
+ if(state.council){await councilStep(state.council,{message,generate,onProgress});return state.council.done?{result:state.council.result}:{state};}
+ const next=await baseResearchStep(options);
+ if(next.result&&council?.enabled&&state.intent!=='social'){state.council=createCouncil(next.result,council.models);return {state};}return next;
 }
 export async function researchVault(options) {
   let state=createResearchState();

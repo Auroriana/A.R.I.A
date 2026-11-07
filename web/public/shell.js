@@ -363,7 +363,7 @@ setInterval(()=>void pumpConversation(),250);
 $('f').onsubmit=async e=>{e.preventDefault();if(!signedIn){$('login').showModal();return;}
  const text=$('q').value.trim()||(files.length?'Read this attachment.':'');if(!text)return;
  if(text.length+(replyTarget?.text.length||0)>3500){err('Please keep each message under 3,500 characters.');return;}
- currentChat??=blankChat();const id=crypto.randomUUID(),now=Date.now(),sent=files;files=[];renderAtt();$('q').value='';
+ currentChat??=blankChat();const id=crypto.randomUUID(),now=Date.now(),sent=files;files=[];renderAtt();$('q').value='';resizeComposer();
  const m={id,turn:id,started:now,edited:now,role:'user',text,replyTo:replyTarget};replyTarget=null;replyPreview.hidden=true;currentChat.messages.push(m);messageTools(msg('user',text),m);
  const queue=currentChat.inputQueue??=[];queue.push({id,text,files:sent,replyTo:m.replyTo,due:now});
  await persistChat();void pumpConversation();
@@ -397,7 +397,10 @@ $('concise').onchange=()=>{$('overclock').setAttribute('aria-pressed',String(!$(
 const app=$('app');try{const s=localStorage.getItem('aria.history.collapsed');if(s===null?matchMedia('(max-width:860px)').matches:s==='true')app.classList.add('hc')}catch{}
 $('ht').onclick=()=>{const c=app.classList.toggle('hc');try{localStorage.setItem('aria.history.collapsed',String(c))}catch{}};
 $('voice').setAttribute('aria-disabled','true');
-$('q').addEventListener('input',()=>{$('q').style.height='28px';$('q').style.height=Math.min(130,$('q').scrollHeight)+'px';});
+function resizeComposer(){const q=$('q');q.style.height='28px';q.style.height=Math.min(130,q.scrollHeight)+'px';q.style.overflowY=q.scrollHeight>130?'auto':'hidden';}
+$('q').addEventListener('input',resizeComposer);
+window.addEventListener('resize',resizeComposer);
+resizeComposer();
 estimateDraft();
 const launchURL=new URL(location.href),openNotes=launchURL.searchParams.get('open')==='notes';launchURL.searchParams.delete('open');window.history.replaceState(null,'',launchURL.pathname+launchURL.search);
 let welcomeLines=[];

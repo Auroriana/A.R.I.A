@@ -46,6 +46,6 @@ test('HTTP streaming emits progress before generation finishes and returns model
     return new Response('data: '+JSON.stringify({candidates:[{content:{parts:[{thought:true,text:'Public summary',thoughtSignature:'private-signature'},{text:'## Answer\n**Yes**'}]},finishReason:'STOP'}]})+'\n\n',{headers:{'content-type':'text/event-stream'}});
   });
   const res={setHeader(){},write(value){events.push(JSON.parse(value));},end(){ended=true;}};
-  await handler({url:'/api/chat',method:'POST',headers:{host:'localhost',cookie:'aria_session=test','content-type':'application/json',accept:'application/x-ndjson'},body:{model:'gemini-3.8-flash',message:'test',mode:'general',concise:true}},res);
+  await handler({url:'/api/chat',method:'POST',headers:{host:'localhost',cookie:'aria_session=test','content-type':'application/json',accept:'application/x-ndjson'},body:{model:'gemini-3.8-flash',settings:{reasoning:''},message:'test',mode:'general',concise:true}},res);
   assert.equal(ended,true);assert.equal(events.at(-1).type,'result');assert.ok(!JSON.stringify(events).includes('private-signature'));assert.ok(events.some(e=>e.stage==='thought-summary'&&e.text==='Public summary'));
 });

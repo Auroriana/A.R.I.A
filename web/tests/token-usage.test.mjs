@@ -57,7 +57,7 @@ test('personality no-gap opinion diagnostics count two calls and no retrieval',a
   return Response.json({candidates:[{content:{parts:[{text}]},finishReason:'STOP'}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:20,totalTokenCount:120,cachedContentTokenCount:50}});
  });
  let result;const res={setHeader(){},end(s){result=JSON.parse(s);}};
- await handler({url:'/api/personality',method:'POST',headers:{cookie:'aria_session=test','content-type':'application/json'},body:{action:'rewrite',message:'What do you think of her?',answer:'A draft.',history:[{role:'model',text:'PRIVATE_FACT'}],settings:{enabled:true}}},res);
+ await handler({url:'/api/personality',method:'POST',headers:{cookie:'aria_session=test','content-type':'application/json'},body:{action:'rewrite',message:'What do you think of her?',answer:'A draft.',history:[{role:'model',text:'PRIVATE_FACT'}],settings:{enabled:true,personality:'gemini-3.5-flash-lite'}}},res);
  assert.equal(res.statusCode,200);assert.equal(result.usage.totalTokenCount,240);
  assert.equal(result.usage.cachedContentTokenCount,100);assert.equal(result.usage.ragSearches,0);
  assert.deepEqual(result.usage.calls.map(c=>c.phase),['memory-plan','rewrite']);

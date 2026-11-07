@@ -69,10 +69,10 @@ html,body{height:100%;height:100dvh;background:#020403;color:#d5f6e1}
 .terminal-window.minimized{height:34px!important;min-height:34px;resize:none}.terminal-window.minimized>:not(.terminal-title){display:none}.terminal-window.expanded{inset:8px!important;width:calc(100% - 16px)!important;height:calc(100% - 16px)!important;resize:none;z-index:999!important}
 #pt{display:flex}#pt[hidden]{display:none}
 @keyframes message-arrive{from{opacity:0;transform:translateY(6px)}}@keyframes terminal-enter{from{opacity:0;transform:translateY(10px) scale(.98)}}@keyframes clock-set{50%{opacity:.3;transform:translateY(-2px)}}
-@media(max-width:760px){#app,#app.hc,#app.nm{grid-template:"h" 48px "m" minmax(0,1fr)/minmax(0,1fr)}#app>header{padding:0 12px}#app .logo{font-size:10px;letter-spacing:.07em}#app header nav{gap:2px}#app header .mb{font-size:9px;padding:0 7px}#out{font-size:0!important}#out svg{width:17px}#app.terminals-open:not(.nm)>main{width:100%}#chat .chat-history-bar{height:65px;padding:10px 16px}#chat .scroll{padding:18px 12px}#msgs .m{max-width:91%;padding-left:30px}#msgs .md{font-size:12px;padding:8px 11px}#chat footer{padding:8px 10px max(10px,env(safe-area-inset-bottom))}#chat #f{gap:7px;padding:8px}.composer-actions{gap:5px}.composer-actions button{width:24px}#q{font-size:13px}.chat-options{padding:6px 3px 0;gap:2px}.chat-options #token-count{font-size:9px}#app>aside.terminals{inset:113px 8px 112px;width:calc(100% - 16px);height:auto;border:1px solid #36745d;border-radius:8px;box-shadow:0 20px 80px #000b;transform:translateY(120vh);background:#04120aee}#app.terminals-open:not(.nm)>aside.terminals{transform:translateY(0)}.terminal-window{width:calc(100% - 30px);max-height:calc(100% - 20px)}.terminal-toolbar{height:40px}.terminal-stage{height:calc(100% - 40px)}#welcome{margin:6vh auto 20px}}
+@media(max-width:760px){#app,#app.hc,#app.nm{grid-template:"h" 48px "m" minmax(0,1fr)/minmax(0,1fr)}#app>header{padding:0 12px}#app .logo{font-size:10px;letter-spacing:.07em}#app header nav{gap:2px}#app header .mb{font-size:9px;padding:0 7px}#out{font-size:0!important}#out svg{width:17px}#app.terminals-open:not(.nm)>main{width:100%}#chat .chat-history-bar{height:65px;padding:10px 16px}#chat .scroll{padding:18px 12px}#msgs .m{max-width:91%;padding-left:40px}#msgs .md{font-size:12px;padding:8px 11px}#chat footer{padding:8px 10px max(10px,env(safe-area-inset-bottom))}#chat #f{gap:7px;padding:8px}.composer-actions{gap:5px}.composer-actions button{width:24px}#q{font-size:13px}.chat-options{padding:6px 3px 0;gap:2px}.chat-options #token-count{font-size:9px}#app>aside.terminals{inset:113px 8px 112px;width:calc(100% - 16px);height:auto;border:1px solid #36745d;border-radius:8px;box-shadow:0 20px 80px #000b;transform:translateY(120vh);background:#04120aee}#app.terminals-open:not(.nm)>aside.terminals{transform:translateY(0)}.terminal-window{width:calc(100% - 30px);max-height:calc(100% - 20px)}.terminal-toolbar{height:40px}.terminal-stage{height:calc(100% - 40px)}#welcome{margin:6vh auto 20px}}
 @media(prefers-reduced-motion:reduce){*,*:before{animation:none!important;transition:none!important}}
 /* Conversational chrome */
-#att:empty{display:none}#chat #f{row-gap:0;padding-block:10px}#q{margin:0;box-sizing:content-box;resize:none}#chat #f:has(#att:not(:empty)){row-gap:8px}
+#att:empty{display:none}#chat #f{row-gap:0;padding-block:10px}#q{margin:0;box-sizing:border-box;resize:none;min-width:0;overflow-y:hidden}#chat #f:has(#att:not(:empty)){row-gap:8px}
 #msgs .md{font-weight:400;border-left-width:1px;border-radius:16px;line-height:1.55;padding:10px 14px}
 #msgs .model .md{border-bottom-left-radius:5px}#msgs .user .md{border-bottom-right-radius:5px}
 #msgs .note-chip{position:absolute;right:5px;bottom:3px;margin:0;padding:2px;border:0;background:none;font-size:13px;line-height:15px}
@@ -114,7 +114,7 @@ html,body{height:100%;height:100dvh;background:#020403;color:#d5f6e1}
 #msgs .m.user .md{border-radius:16px 16px 5px 16px}#chat .note-chip svg{width:13px;height:13px;stroke-width:1.5}
 /* Connected DM groups: round outer corners, tight joins on the sender side. */
 #msgs{gap:3px}
-#msgs .m{max-width:min(78%,620px,calc(100% - 64px));margin-top:15px;padding-left:36px}
+#msgs .m{max-width:min(78%,620px,calc(100% - 64px));margin-top:15px;padding-left:40px}
 #msgs .m.user{max-width:78%;padding-left:0}
 #msgs .m.model+.m.model,#msgs .m.user+.m.user{margin-top:0}
 #msgs .m.block-followup{margin-top:0}
@@ -128,4 +128,11 @@ html,body{height:100%;height:100dvh;background:#020403;color:#d5f6e1}
 #msgs .m.model:has(+.m.model):before{visibility:hidden}
 #msgs .m>.md.status{border-radius:20px;min-width:36px}
 #msgs .reply-quote{border-radius:14px 14px 4px 14px;font-size:11px;font-weight:400;opacity:.75;max-width:100%;padding:8px 12px;border:0;background:#14251c}
-@media(max-width:760px){#msgs .m{max-width:calc(100% - 64px);padding-left:30px}#msgs .m.user{max-width:86%;padding-left:0}#msgs .m .md{font-size:12px;padding:8px 12px}}
+@media(max-width:760px){#msgs .m{max-width:calc(100% - 64px);padding-left:40px}#msgs .m.user{max-width:86%;padding-left:0}#msgs .m .md{font-size:12px;padding:8px 12px}}
+
+/* Fixed action sizes prevent the send glyph from shrinking on narrow screens. */
+#chat .composer-actions #send{width:44px;height:44px;min-width:44px;padding:10px;justify-content:center;border:1px solid #397d51;border-radius:50%;background:#123c24!important}
+#chat .composer-actions #send svg{width:22px;height:22px;flex:none}
+#chat .composer-actions{flex-shrink:0}
+#chat #f{grid-template-columns:34px minmax(0,1fr) auto}
+@media(max-width:420px){#chat #f{column-gap:6px}.composer-actions{gap:3px}#q{font-size:13px}}
