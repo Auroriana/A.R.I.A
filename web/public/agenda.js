@@ -15,7 +15,7 @@ export function mountAgenda({api,owner,busy,ready=()=>true,model,save,open,reply
    const {reminders,archiveWarning}=await api('agenda?timezone='+encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone));if(owner()!==who)return;if(archiveWarning)onError('Reminder overview sync pending: '+archiveWarning);
    if(account!==who){account=who;seen=new Set();}
    const now=Date.now(),due=reminders.filter(r=>Date.parse(r.due_at)<=now);
-   if(due.some(r=>!seen.has(r.id)))onDue();for(const r of due)seen.add(r.id);
+   const fresh=due.filter(r=>!seen.has(r.id));if(fresh.length)onDue(fresh);for(const r of due)seen.add(r.id);
 
   }catch(e){if(initial)throw e;if(owner()===who)onError('Could not load reminders: '+e.message);}finally{checking=false;}
  }

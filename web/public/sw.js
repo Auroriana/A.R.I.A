@@ -1,6 +1,6 @@
 self.addEventListener('push',event=>{
  let data;try{data=event.data.json();}catch{return;}
- event.waitUntil(self.registration.showNotification('Capri',{body:data.body,tag:data.messageId||data.id,icon:'/capri-profile.avif',data:{message:data.messageId||data.id+'/opening'},requireInteraction:true}));
+ event.waitUntil(self.registration.showNotification('Capri',{body:data.body,tag:data.messageId||data.id,icon:'/capri-profile.avif',data:{message:data.messageId||data.id+'/opening'},requireInteraction:true,silent:false,vibrate:[160,80,160]}));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();const id=event.notification.data?.message||(event.notification.data?.chat&&event.notification.data.chat+'/opening');

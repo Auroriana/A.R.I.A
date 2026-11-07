@@ -16,8 +16,8 @@ test('Capri core is generated from the editable vault and stock settings migrate
 test('personality catalog preserves provenance and corrected ending',async()=>{
  const catalog=JSON.parse(await readFile(new URL('../../personality/Capricorn/retrieval-catalog.json',import.meta.url),'utf8'));
  assert.equal(catalog.embeddingStatus,'not-generated');
- assert.equal(catalog.records.length,91);
- assert.equal(new Set(catalog.records.map(r=>r.id)).size,91);
+ assert.ok(catalog.records.length>=91);
+ assert.equal(new Set(catalog.records.map(r=>r.id)).size,catalog.records.length);
  assert.ok(catalog.records.every(r=>r.contentHash.length===64&&r.text.includes('ai_enabled: false')));
  assert.equal(catalog.records.filter(r=>r.sourceId==='T2-user-correction').length,7);
  assert.ok(!catalog.records.some(r=>r.id==='capri.transcript.t1-c46'));

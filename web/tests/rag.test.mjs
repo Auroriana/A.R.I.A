@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {researchVault,RAG_LIMITS,keywordQuery} from '../lib/rag.js';
+import {researchVault,researchStep,createResearchState,RAG_LIMITS,keywordQuery} from '../lib/rag.js';
 import handler from '../api/index.js';
 
 const passage=(id,title=String(id),content=`Content ${id}`)=>({id:String(id),title,source_path:`${id}.md`,vault_name:'Insurance',content});
@@ -9,16 +9,16 @@ const scenario='Authenticated - Customer came in asking - My husband is at the d
 
 test('authenticated multi-intent case expands beyond the first authentication document and follows new references',async()=>{
   const requests=[],queries=[];
-  const replies=[plan(['Third Party Authorization','Add vehicle coverage','ID card delivery','Payment history autopay']),plan(['Automatic payment bank disclosure']),plan([]),{answer:'Proceed with the completed identity check. Check third-party authority [S2], clarify coverage [S3], then delivery [S4] and billing [S5]. Autopay disclosure requires [S6].'}];
+  const replies=[plan(['Third Party Authorization','Add vehicle coverage','ID card delivery','Payment history autopay']),plan(['Automatic payment bank disclosure']),{answer:'Proceed with the completed identity check. Check third-party authority [S2], clarify coverage [S3], then delivery [S4] and billing [S5]. Autopay disclosure requires [S6].'}];
   const results=[[passage(1,'Authentication Process')],[passage(1),passage(2,'Third Party Authorization')],[passage(3,'Add vehicle')],[passage(4,'ID card delivery')],[passage(5,'Billing')],[passage(6,'Bank disclosure')]];
   const result=await researchVault({message:scenario,search:async(q,options)=>{queries.push({q,...options});return results.shift();},generate:async request=>{requests.push(request);return replies.shift();}});
   assert.equal(queries.length,6);assert.equal(queries[0].initial,true);assert.ok(queries.slice(1).every(q=>!q.initial));
-  assert.equal(requests.length,4);assert.equal(result.sources.length,6);
+  assert.equal(requests.length,3);assert.equal(result.sources.length,6);
   assert.deepEqual(result.sources.map(s=>s.id),['S1','S2','S3','S4','S5','S6']);
   const final=JSON.parse(requests.at(-1).contents[0].parts[0].text);
   assert.equal(final.operatorMessage,scenario);assert.equal(final.evidence[0].title,'Authentication Process');
   assert.equal(final.evidence.at(-1).id,'S6');
-  assert.equal(result.research.planningCalls,3);
+  assert.equal(result.research.planningCalls,2);
 });
 
 test('empty initial retrieval can recover with a focused search',async()=>{
@@ -43,22 +43,16 @@ test('duplicate queries and duplicate passages do not consume unbounded searches
   assert.equal(searches,2);assert.equal(result.sources.length,1);assert.equal(calls,3);
 });
 
-test('research continues beyond two rounds and 24 sources until the planner finishes',async()=>{
-  let searches=0,calls=0;
-  const result=await researchVault({message:'Question',search:async()=>{const n=searches++;return Array.from({length:4},(_,i)=>passage(n*4+i));},generate:async request=>{
-    if(calls++<5)return plan(Array.from({length:4},(_,i)=>`query ${calls} ${i}`));
-    if(calls===6)return plan([]);
-    const evidence=JSON.parse(request.contents[0].parts[0].text).evidence;
-    assert.equal(evidence.length,84);return {answer:'Answer [S84].'};
-  }});
-  assert.equal(searches,21);assert.equal(calls,7);assert.equal(result.sources.length,84);
-  assert.deepEqual(result.research.warnings,[]);
+test('research stops within the configured quick budget',async()=>{
+ let searches=0;
+ const result=await researchVault({message:'Question',search:async()=>{searches++;return [passage(searches)];},generate:async(_,meta)=>meta.phase==='planning'?plan(['next '+searches,'another '+searches]):{answer:'Supported [S1].'}});
+ assert.ok(searches<=RAG_LIMITS.quickSearches);assert.ok(result.research.planningCalls<=RAG_LIMITS.quickRounds);assert.ok(result.research.warnings.length);
 });
 
-test('evidence character budget preserves complete passages',async()=>{
-  let calls=0;
-  const result=await researchVault({message:'Question',search:async()=>Array.from({length:24},(_,i)=>passage(i,String(i),'x'.repeat(3000))),generate:async()=>++calls===1?plan([]):{answer:'Answer [S20].'}});
-  assert.equal(result.sources.length,24);assert.ok(result.sources.every(s=>s.excerpt.length===3000));
+test('retrieval sends only complete passages within the smaller budget',async()=>{
+ let calls=0;
+ const result=await researchVault({message:'Question',search:async()=>Array.from({length:24},(_,i)=>passage(i,String(i),'x'.repeat(3000))),generate:async()=>++calls===1?plan([]):{answer:'Answer [S1].'}});
+ assert.equal(result.sources.length,6);assert.ok(result.sources.every(s=>s.excerpt.length===3000));assert.ok(result.sources.reduce((n,s)=>n+s.excerpt.length,0)<=RAG_LIMITS.evidenceChars);
 });
 
 test('malformed or truncated plans stop research visibly without treating model text as a query',async()=>{
@@ -131,19 +125,17 @@ test('router removes repeated queries in the same vault but preserves different 
  assert.deepEqual(searches,[{q:'Payment history',vault:'Insurance'},{q:'Payment history',vault:'Lumina Records'}]);
 });
 
-test('full evidence budget omits old passages without renumbering or accepting omitted citations',async()=>{
+test('evidence budget favors relevance and retains stable IDs for omitted passages',async()=>{
  for(const invalid of [false,true]){
-  let calls=0,searches=0;
-  const run=researchVault({message:'Complex research',search:async()=>Array.from({length:6},(_,i)=>passage(++searches,String(searches),'x'.repeat(3000))),generate:async request=>{
-   if(++calls<=10)return plan(['next '+calls]);
+  const state=createResearchState();state.phase='answer';state.intent='lookup';
+  state.sources=Array.from({length:10},(_,i)=>({...passage(i,String(i),'x'.repeat(3000)),key:String(i),seenAt:10-i,relevance:i===0?0:20}));
+  const run=researchStep({state,message:'Question',search:async()=>[],generate:async request=>{
    const evidence=JSON.parse(request.contents[0].parts[0].text).evidence;
-   assert.equal(evidence.length,66);
-   assert.equal(evidence.filter(s=>s.content).reduce((n,s)=>n+s.content.length,0),RAG_LIMITS.evidenceChars);
-   assert.equal(evidence[0].passageOmitted,true);assert.equal(evidence.at(-1).id,'S66');
-   assert.equal(evidence.at(-1).content.length,3000);
-   return calls===11?plan([]):{answer:invalid?'Omitted [S1].':'Supported [S66].'};
+   assert.equal(evidence.length,10);assert.equal(evidence.filter(s=>s.content).reduce((n,s)=>n+s.content.length,0),RAG_LIMITS.evidenceChars);
+   assert.equal(evidence[0].passageOmitted,true);assert.equal(evidence[1].id,'S2');
+   return {answer:invalid?'Omitted [S1].':'Supported [S2].'};
   }});
-  if(invalid)await assert.rejects(run,/invalid source/);else assert.equal((await run).sources.at(-1).cited,true);
+  if(invalid)await assert.rejects(run,/invalid source/);else assert.equal((await run).result.sources[1].cited,true);
  }
 });
 

@@ -98,6 +98,19 @@ html,body{height:100%;height:100dvh;background:#020403;color:#d5f6e1}
 .md.status i{display:block;width:6px;height:6px;border-radius:50%;background:#a4b6a9;animation:typing-dot 1.2s infinite}.md.status i:nth-child(2){animation-delay:.16s}.md.status i:nth-child(3){animation-delay:.32s}@keyframes typing-dot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-3px);opacity:1}}
 .composer-actions #overclock{border:1px solid #45694d;background:#0a2012;border-radius:9px;padding:3px;transition:filter .2s,box-shadow .2s}.composer-actions #overclock img{mix-blend-mode:screen;filter:sepia(1) saturate(3) hue-rotate(75deg)}.composer-actions #overclock[aria-pressed=true]{border-color:#ee4861;box-shadow:0 0 12px #ed304050}.composer-actions #overclock[aria-pressed=true] img{filter:sepia(1) saturate(5) hue-rotate(300deg)}
 @media(hover:none){.message-menu summary{opacity:.8}}@media(prefers-reduced-motion:reduce){.md.status i{animation:none}}
+/* Message actions stay quiet until pointer hover or keyboard focus. */
+@media(hover:hover){
+ #msgs .m>.message-menu:not([open]),#msgs .m>.message-reply{opacity:0;pointer-events:none;transition:opacity .15s}
+ #msgs .m:hover>.message-menu,#msgs .m:focus-within>.message-menu,#msgs .m:hover>.message-reply,#msgs .m:focus-within>.message-reply{opacity:1;pointer-events:auto}
+}
+#msgs .message-menu[open]{width:340px;max-height:min(70vh,560px);overflow:auto}
+#msgs .m:not(.user)>.message-menu[open]{left:36px;right:auto}
+#msgs .message-menu .refs,#msgs .message-menu .web-panel{display:block;margin:8px 0;padding:0;text-align:left}
+#msgs .message-menu .note-chip{position:static;display:inline-flex;padding:5px;margin:3px 0}
+#msgs .m:has(.message-menu .note-chip)>.md{padding-bottom:9px}
+.token-breakdown pre{white-space:pre-wrap;font:11px/1.5 ui-monospace,monospace;max-height:250px;overflow:auto}
+#notification-toggle{font-size:10px;padding:3px 6px;background:none;border:1px solid #285537;border-radius:6px}
+.chat-options{flex-wrap:wrap}
 #msgs .m.user .md{border-radius:16px 16px 5px 16px}#chat .note-chip svg{width:13px;height:13px;stroke-width:1.5}
 /* Connected DM groups: round outer corners, tight joins on the sender side. */
 #msgs{gap:3px}

@@ -1,11 +1,24 @@
 // Only explicit commands trigger writes; quoted text and ordinary chat stay chat.
 export function captureIntent(text){
+ // Accept a conversational preamble, but never promote quoted/reported commands.
+ const addressed=/\b(?:can|could|would|will) you (?:please )?(?=remind me\b|note this\b|write this down\b)/i.exec(text);
+ if(addressed&&!/["“”`]|\b(?:said|says|asked|quote|example|don't|do not|never)\b/i.test(text.slice(0,addressed.index)))text=text.slice(addressed.index);
  const input=text.trim().replace(/^(?:(?:hey\s+)?(?:capri|carpi)[,!]?\s+)?(?:(?:(?:can|could|would|will) you|I need you to|I'd like you to)\s+)?(?:please\s+)?/i,'');
  const note=/^(?:note this(?: for me)?|note down|jot (?:this|down)|write this down|take (?:a )?note(?: of)?|make (?:a )?(?:quick )?note(?: of)?|save (?:this|a) note|remember this)\s*[:,—-]?\s+([\s\S]+)$/i.exec(input);
  if(note)return {kind:'note',text:note[1].trim()};
  const reminder=/^(?:remind me|(?:set|create) (?:a )?reminder(?: for me)?)\s+(?:about\s+|to\s+)?([\s\S]+)$/i.exec(input);
- if(reminder)return {kind:'reminder',text:reminder[1].trim()};
+ if(reminder){
+  const parts=reminder[1].split(/(?:[?!.]\s+|\s+(?:and\s+)?also\s+)(?=(?:also\s+)?(?:help me|find|look|search|retrieve|pick|choose|tell me|what|can you)\b)/i);
+  return {kind:'reminder',text:parts[0].trim(),...(parts.length>1?{followup:parts.slice(1).join(' ').replace(/^also\s+/i,'')}: {})};
+ }
  return null;
+}
+export function reminderContent(text){
+ const when=String.raw`(?:in\s+(?:\d+(?:\.\d+)?|a|an|one|two|three|four|five|ten|fifteen|twenty|thirty|half)\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)|(?:(?:today|tomorrow)\s+)?at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|(?:today|tomorrow)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)`;
+ return String(text).replace(new RegExp('^\\s*(?:later\\s+)?'+when+'\\s*(?:to\\s+)?','i'),'').replace(new RegExp('\\s+'+when+'[.!?]*$','i'),'').replace(/^later\s+(?:to\s+)?/i,'').replace(/[?!.]+$/,'').trim();
+}
+export function needsVault(text){
+ return /\b(find|search|retrieve|look (?:inside|through|in|for)|pick|choose|favou?rite)\b/i.test(text)&&/\b(my|i (?:made|wrote)|notes?|vault|quotes?|poetry|poems?)\b/i.test(text);
 }
 export function reminderQuery(text){
  if(!/\breminders?\b/i.test(text)||!(/\b(what|show|list|check|read|find|search|view|any|which|pull up)\b/i.test(text)||/^reminders?(?:\s+(?:today|yesterday))?[?!.]?$/i.test(text.trim())))return null;

@@ -1,3 +1,5 @@
+import {mountNotifications} from '/notifications.js';
+import {spokenText,reminderPresentation} from '/spoken-text.js';
 import {createTimeline,mergeMessages} from '/timeline.js';
 import {mountTerminals} from '/terminals.js';
 import {splitReply} from '/message-blocks.js';
@@ -22,8 +24,9 @@ let booting=true;
 let history=[],signedIn=false,busy=false,cfg,first=true,owner="",currentChat=null,chatController=null;
 const terminals=mountTerminals($('terminals'),$('pt'));
 const timeline=createTimeline({api,owner:()=>owner,legacy:chatRows});
+const notifications=mountNotifications({api,container:document.querySelector('.chat-options'),onError:message=>err(message)});
 const core=mountCoreSettings({api,owner:()=>owner,busy:()=>busy,onWelcome:()=>loadWelcome(owner,true),onArchive:()=>syncHistory(true)});
-const agenda=mountAgenda({api,owner:()=>owner,busy:()=>busy,ready:()=>!booting,model:()=>$('model').value,settings:()=>core.get(),onError:message=>err(message),save:async()=>{},open:async()=>tab(false),reply:text=>{$('q').value=text;$('f').requestSubmit();},onDue:()=>scheduleSync(),openOverview:async note=>{await loadVaults();tab(true);await workspace.open(note.path,note.vault);}});
+const agenda=mountAgenda({api,owner:()=>owner,busy:()=>busy,ready:()=>!booting,model:()=>$('model').value,settings:()=>core.get(),onError:message=>err(message),save:async()=>{},open:async()=>tab(false),reply:text=>{$('q').value=text;$('f').requestSubmit();},onDue:rows=>{for(const r of rows)notifications.notify({id:r.id+'/opening',role:'model',event:'reminder.due',text:r.notification||'Time to '+r.text});scheduleSync();},openOverview:async note=>{await loadVaults();tab(true);await workspace.open(note.path,note.vault);}});
 function showPersonality(it,m,animate=true){
  if(m.personalityPending&&!m.personality){
    setStatus(it,'This earlier reply was interrupted.');
@@ -46,7 +49,7 @@ function showPersonality(it,m,animate=true){
 function webPanel(it,m){
  it.querySelector('.web-panel')?.remove();if(!m.web&&!m.webRequest)return;const panel=el('div');panel.className='web-panel';
  if(m.web){const d=el('details');d.append(el('summary','Web research'));const content=el('div');md(content,m.web.answer);d.append(content);for(const source of m.web.sources){const a=el('a',source.title);a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';d.append(a,el('br'));}if(m.web.entryPoint){const frame=el('iframe');frame.title='Google Search suggestions';frame.setAttribute('sandbox','allow-popups allow-popups-to-escape-sandbox');frame.srcdoc=m.web.entryPoint;frame.style.cssText='width:100%;height:120px;border:0';d.append(frame)}panel.append(d)}
- if(m.webRequest&&m.webContext){panel.append(el('p',m.webRequest.question),el('small','Public search: '+m.webRequest.query));const yes=el('button','Search the web'),no=el('button','Not now');panel.append(yes,no);no.onclick=async()=>{m.webRequest=null;webPanel(it,m);await persistChat()};yes.onclick=async()=>{if(busy)return;lockChat(true);chatController=new AbortController();yes.disabled=true;try{const styled=await personalityCall({...m.webContext,approvedWebQuery:m.webRequest.query},chatController.signal);m.edited=Date.now();m.text=styled.answer;m.blocks=styled.blocks;m.expression=styled.expression;delete m.personality;m.personalityResearch=styled.personalityResearch;m.citationWarning=styled.citationWarning;m.web=styled.web;m.webRequest=null;m.usage=addUsage(m.usage,styled.usage);m.sources=[...(m.sources||[]).filter(s=>!s.id.startsWith('P')),...(styled.sources||[])];it.querySelectorAll('.refs,.personality-toggle,.cite-warn').forEach(n=>n.remove());refs(it,m.sources);showPersonality(it,m);webPanel(it,m);showUsage(it,m.usage);history=conversationMemory(currentChat.messages);await persistChat()}catch(e){err(e.message);yes.disabled=false}finally{chatController=null;lockChat(false)}};}it.append(panel);
+ if(m.webRequest&&m.webContext){panel.append(el('p',m.webRequest.question),el('small','Public search: '+m.webRequest.query));const yes=el('button','Search the web'),no=el('button','Not now');panel.append(yes,no);no.onclick=async()=>{m.webRequest=null;webPanel(it,m);await persistChat()};yes.onclick=async()=>{if(busy)return;lockChat(true);chatController=new AbortController();yes.disabled=true;try{const styled=await personalityCall({...m.webContext,approvedWebQuery:m.webRequest.query},chatController.signal);m.edited=Date.now();m.text=styled.answer;m.blocks=styled.blocks;m.expression=styled.expression;delete m.personality;m.personalityResearch=styled.personalityResearch;m.citationWarning=styled.citationWarning;m.web=styled.web;m.webRequest=null;m.usage=addUsage(m.usage,styled.usage);m.sources=[...(m.sources||[]).filter(s=>!s.id.startsWith('P')),...(styled.sources||[])];it.querySelectorAll('.refs,.personality-toggle,.cite-warn').forEach(n=>n.remove());refs(it,m.sources);showPersonality(it,m);webPanel(it,m);showUsage(it,m.usage);history=conversationMemory(currentChat.messages);await persistChat()}catch(e){err(e.message);yes.disabled=false}finally{chatController=null;lockChat(false)}};}(it.querySelector('.message-menu')||it).append(panel);
 }
 async function personalityCall(body,signal){const r=await fetch('/api/personality',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal});return readChatStream(r,e=>{if(e.stage==='web-search')terminals.open({id:'web-search',kind:'retrieval',title:'PUBLIC WEB',text:e.query,state:'reading'});if(e.stage==='personality-scan'){setExpression('focused_analysis');}if(e.stage==='quota-wait'){const it=$('msgs').querySelector('[data-pending]');if(it)setStatus(it,e.message);}});}
 const workspace=mountWorkspace($("notes"),{api,ask,confirm:confirmAction,model:()=>$("model").value});
@@ -55,22 +58,23 @@ async function api(p,b){const r=await fetch('/api/'+p,{signal:AbortSignal.timeou
 async function chat(body,on){
  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify(body),signal:chatController?.signal});
  if(r.status===401){signedIn=false;$('login').showModal()}
- if(!r.ok||!r.headers.get('content-type')?.includes('ndjson')){const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Request failed.');return d}
+ if(!r.ok||!r.headers.get('content-type')?.includes('ndjson')){const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||'Request failed.'),{status:r.status});return d}
  const rd=r.body.getReader(),dec=new TextDecoder();let buf='',res;
- const eat=l=>{if(!l.trim())return;const e=JSON.parse(l);if(e.type==='error')throw new Error(e.error);if(e.type==='progress')on(e);if(e.type==='result')res=e};
+ const eat=l=>{if(!l.trim())return;const e=JSON.parse(l);if(e.type==='error')throw Object.assign(new Error(e.error),{status:e.status});if(e.type==='progress')on(e);if(e.type==='result')res=e};
  for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n'))>=0){eat(buf.slice(0,i));buf=buf.slice(i+1)}}
  eat(buf);if(!res)throw new Error('Connection ended before Capri finished.');return res}
-function setStatus(it,text){const n=it.querySelector('.md');n.replaceChildren(...Array.from({length:3},()=>el('i')));n.classList.add('status');n.setAttribute('aria-label','Capri is typing');}
-function md(root,text){root.classList.remove('status');root.removeAttribute('aria-label');renderMarkdown(root,text,{citations:true,notes:workspace.notes,onLink:(link)=>{if(link.resolved){tab(true);workspace.open(link.resolved)}}});}
+function setStatus(it,text){const n=it.querySelector('.md');n.replaceChildren(...Array.from({length:3},()=>el('i')));n.classList.add('status');n.setAttribute('aria-label',text||'Capri is typing');n.title=text||'Capri is typing';}
+function md(root,text){root.classList.remove('status');root.removeAttribute('aria-label');renderMarkdown(root,spokenText(text),{citations:false,notes:workspace.notes,onLink:(link)=>{if(link.resolved){tab(true);workspace.open(link.resolved)}}});}
 let renderingHistory=false;
 function renderBlocks(it,m){
- const blocks=(m.blocks?.length?m.blocks:splitReply(m.personality||m.text)).map(t=>t.replace(/^\s*\[sprite:[^\]]*\]\s*/i,''));md(it.querySelector('.md'),blocks[0]||'');
+ const view=reminderPresentation(m);
+ const blocks=(m.event==='reminder.due'?[view.text]:m.blocks?.length?m.blocks:splitReply(m.personality||m.text)).map(t=>t.replace(/^\s*\[sprite:[^\]]*\]\s*/i,''));md(it.querySelector('.md'),blocks[0]||'');
  const group=it.dataset.message=m.id||'';
  for(const sibling of [...$('msgs').querySelectorAll('.block-followup')])if(sibling.dataset.parent===group)sibling.remove();
  let last=it;for(const text of blocks.slice(1)){const extra=el('article');extra.className='m model block-followup';extra.style.animationDelay=(Math.min(blocks.indexOf(text),8)*180)+'ms';extra.style.animationFillMode='backwards';extra.dataset.parent=group;const body=el('div');body.className='md';md(body,text);extra.append(body);messageTools(extra,m);last.after(extra);last=extra;}
  messageTools(it,m);it.querySelector('.note-chip')?.remove();
  const note=m.note||(m.captureJob&&currentChat?.messages.find(x=>x.note?.id===m.captureJob)?.note);
- if(note){const button=el('button',m.reminder||m.event==='reminder.due'?'♧':'▤');button.setAttribute('aria-label',m.reminder?'Open reminder note':'Open note');button.className='note-chip';button.innerHTML=m.reminder||m.event==='reminder.due'?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4"/></svg>':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg>';button.onclick=async()=>{await loadVaults();tab(true);await workspace.open(note.path,note.vault);};it.append(button);}
+ if(note){const button=el('button',m.reminder||m.event==='reminder.due'?'♧':'▤');button.setAttribute('aria-label',m.reminder?'Open reminder note':'Open note');button.className='note-chip';button.innerHTML=m.reminder||m.event==='reminder.due'?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4"/></svg>':'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg>';button.onclick=async()=>{await loadVaults();tab(true);await workspace.open(note.path,note.vault);};(it.querySelector('.message-menu')||it).append(button);}
  else if(m.captureJob){const chip=el('button','▤');chip.setAttribute('aria-label','Note status');chip.className='note-chip';chip.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg>';chip.onclick=()=>captureStatus(m.captureJob);it.append(chip);}
 }
 async function captureStatus(id){try{const {note}=await api('quick-status?id='+encodeURIComponent(id));if(note.status==='filed'){await loadVaults();tab(true);await workspace.open(note.path,note.vault);return;}const d=el('dialog'),close=el('button','Close');d.append(el('h3','Quick note · '+note.status),el('p',note.error||'Your original is saved. Filing continues in the background.'));close.onclick=()=>d.close();if(note.status==='failed'){const retry=el('button','Retry filing');retry.onclick=async()=>{retry.disabled=true;try{await api('quick-retry',{id});void api('quick-kick',{}).then(scheduleSync).catch(e=>err(e.message));d.close();}catch(e){retry.disabled=false;err(e.message);}};d.append(retry);}d.append(close);d.onclose=()=>d.remove();document.body.append(d);d.showModal();}catch(e){err(e.message);}}
@@ -81,7 +85,7 @@ function refs(it,src){if(!src.length)return;const d=el('details');d.className='r
  renderMarkdown(p,x.excerpt,{path:x.path,notes:workspace.notes,onLink:async link=>{tab(true);const v=[...document.querySelector('#nv').options].find(o=>o.textContent===x.vault);await workspace.openReference(link,x.path,v?.value);}});
  const sm=el('small',(x.vault?x.vault+' / ':'')+x.path.replace(/\.md$/i,'')),open=el('button','Open note ↗');open.className='open-source';open.onclick=()=>openSource(x.path,x.vault);
  if(x.snapshotCapturedAt)sm.append(' · Earlier snapshot: '+new Date(x.snapshotCapturedAt).toLocaleString());
- e.append(el('summary','['+x.id+'] '+x.title),sm,p,open);d.append(e)}it.append(d)}
+ e.append(el('summary','['+x.id+'] '+x.title),sm,p,open);d.append(e)}(it.querySelector('.message-menu')||it).append(d)}
 async function openSource(path,vaultName){tab(true);const opts=[...document.querySelector('#nv').options],v=opts.find(o=>o.textContent===vaultName);await workspace.open(path,v?.value);}
 const hl=highlightClaim;
 $('msgs').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const bubble=b.closest('.m'),it=bubble.classList.contains('block-followup')?[...$('msgs').querySelectorAll('[data-message]')].find(n=>n.dataset.message===bubble.dataset.parent):bubble,src=it?.querySelector('.src[data-s="'+b.dataset.s+'"]');if(!src)return;
@@ -122,24 +126,26 @@ function onProgress(it,ev){
  else if(ev.stage==='results'){if(slog.lastChild)slog.lastChild.textContent+=' → '+ev.notes.length+(ev.notes.length===1?' passage':' passages');for(const n of ev.notes)file(n)}
  else if(ev.stage==='routing'||ev.stage==='planning'||ev.stage==='answering'||ev.stage==='verifying'){setStatus(it,ev.message);if(ev.stage==='answering'){cool();$('cur').textContent='composing answer'}}
  else if(false&&ev.stage==='thought-summary'){let t=it.querySelector('.th');if(!t){t=el('details');t.className='th';t.append(el('summary','Thinking'),el('div'));it.querySelector('.who').after(t)}t.lastChild.append(ev.text)}}
-function showUsage(it,usage){if(!usage)return;it.dataset.tokens=String(usage.totalTokenCount||0);const n=it.querySelector('.message-tokens');if(n)n.textContent=it.dataset.tokens;}
+function showUsage(it,usage){if(!usage)return;it.dataset.tokens=String(usage.totalTokenCount||0);const n=it.querySelector('.message-tokens');if(n){n.textContent=`${usage.estimated?'≈ ':''}Input ${usage.promptTokenCount??'—'} · Output ${usage.candidatesTokenCount??'—'} · Total ${usage.totalTokenCount||0}`;n.title=usageTitle(usage);}const menu=it.querySelector('.message-menu');if(menu){menu.querySelector('.token-breakdown')?.remove();const d=el('details');d.className='token-breakdown';d.append(el('summary','Token details'),el('pre',usageDetails(usage)));menu.append(d);}}
 let replyTarget=null;
 function messageTools(it,m){
- it.dataset.message=m.id;it.querySelector('.message-menu')?.remove();
+ it.dataset.message=m.id;const metadata=[...it.querySelectorAll('.refs,.web-panel,.note-chip')];it.querySelector('.message-menu')?.remove();
  it.querySelector('.message-reply')?.remove();
  const menu=el('details'),toggle=el('summary','•••');menu.className='message-menu';toggle.setAttribute('aria-label','Message options');
  const date=el('time',new Date(m.sentAt||m.started).toLocaleString(undefined,{month:'long',day:'numeric',hour:'numeric',minute:'2-digit'}));
  menu.append(toggle,date);
- if(m.role==='model'){const count=el('span',String(m.usage?.totalTokenCount||it.dataset.tokens||0));count.className='message-tokens';const reply=el('button','↩');reply.type='button';reply.className='message-reply';reply.setAttribute('aria-label','Reply');reply.title='Reply';reply.onclick=()=>{replyTarget={id:m.id,text:(it.querySelector('.md')?.textContent||m.text).slice(0,1000)};const preview=$('reply-preview');preview.hidden=false;preview.firstChild.textContent=replyTarget.text;menu.open=false;$('q').focus();};menu.append(count);it.append(reply);}
- menu.addEventListener('toggle',()=>{if(menu.open)for(const other of $('msgs').querySelectorAll('.message-menu[open]'))if(other!==menu)other.open=false;});
- it.append(menu);
+ if(m.role==='model'){const count=el('span',m.usage||it.dataset.tokens?String(m.usage?.totalTokenCount||it.dataset.tokens):'No token usage recorded for this bubble');count.className='message-tokens';const reply=el('button','↩');reply.type='button';reply.className='message-reply';reply.setAttribute('aria-label','Reply');reply.title='Reply';reply.onclick=()=>{replyTarget={id:m.id,text:(it.querySelector('.md')?.textContent||m.text).slice(0,1000)};const preview=$('reply-preview');preview.hidden=false;preview.firstChild.textContent=replyTarget.text;menu.open=false;$('q').focus();};menu.append(count);it.append(reply);}
+ menu.addEventListener('toggle',()=>{if(menu.open){for(const other of $('msgs').querySelectorAll('.message-menu[open]'))if(other!==menu)other.open=false;const bounds=$('scroll').getBoundingClientRect(),parent=it.getBoundingClientRect();menu.style.maxHeight=Math.max(80,bounds.height-16)+'px';menu.style.top='0px';const height=menu.getBoundingClientRect().height;menu.style.top=Math.max(bounds.top+8-parent.top,Math.min(0,bounds.bottom-8-parent.top-height))+'px';}},true);
+ menu.append(...metadata);it.append(menu);
+ if(m.reminder||m.event==='reminder.due'){const d=el('details');d.className='reminder-details';d.append(el('summary','Reminder details'),el('p',reminderPresentation(m).details||m.reminder?.text||'Saved reminder'));menu.append(d);}
+ showUsage(it,m.usage);
  if(m.replyTo&&!it.querySelector('.reply-quote')){const quote=el('blockquote',m.replyTo.text);quote.className='reply-quote';it.prepend(quote);}
 }
 const replyPreview=el('div'),replyCancel=el('button','×');replyPreview.id='reply-preview';replyPreview.hidden=true;replyCancel.type='button';replyCancel.setAttribute('aria-label','Cancel reply');replyCancel.onclick=()=>{replyTarget=null;replyPreview.hidden=true;};replyPreview.append(el('span'),replyCancel);$('f').before(replyPreview);
 document.addEventListener('click',e=>{if(!e.target.closest('.message-menu'))$('msgs').querySelectorAll('.message-menu[open]').forEach(n=>n.open=false);});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('msgs').querySelectorAll('.message-menu[open]').forEach(n=>n.open=false);});
 
-function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent=String(estimateQuestion($('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':''),history,files));n.title='Estimated tokens for question, conversation history and attachments. Attachments use a rough allowance of 4096 tokens each.';n.setAttribute('aria-label',n.title);}
+function estimateDraft(){if(busy)return;const n=$('token-count');n.textContent='≈ input '+String(estimateQuestion($('q').value.trim()||(files.length?'Read the text in this attachment and help me with it.':''),history,files));n.title='Estimated tokens for question, conversation history and attachments. Attachments use a rough allowance of 4096 tokens each.';n.setAttribute('aria-label',n.title);}
 $('q').addEventListener('input',estimateDraft);
 // ---- ui
 const err=m=>{$('err').textContent=m;$('err').hidden=!m};
@@ -194,6 +200,7 @@ async function syncHistory(manual=false){
  try{
    const incoming=await timeline.sync();
    if(active()&&currentChat&&incoming.length){
+    const knownIds=new Set(currentChat.messages.map(m=>m.id));for(const message of incoming)if(!knownIds.has(message.id))notifications.notify(message);
     if(busy){const known=new Set(currentChat.messages.map(m=>m.id));currentChat.messages=mergeMessages(currentChat.messages,incoming);for(const m of incoming)if(!known.has(m.id)){const item=msg(m.role,m.text);if(m.role==='model'){renderBlocks(item,m);refs(item,m.sources||[]);}}}
     else{syncInbox.push(...incoming);applySyncInbox();}
    }
@@ -205,13 +212,13 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleSy
 window.addEventListener('online',scheduleSync);
 navigator.serviceWorker?.addEventListener('message',event=>{if(event.data?.type==='capri:notification'){tab(false);scheduleSync();}});
 setInterval(()=>{if(!$('chat').hidden)scheduleSync()},30000);
-async function restoreChats(){const restored=await timeline.load();if(!restored)return;displayChat({...blankChat(),...restored});$('scroll').scrollTop=1e9;await refreshHistory();}
+async function restoreChats(){void notifications.restore();const restored=await timeline.load();if(!restored)return;displayChat({...blankChat(),...restored});$('scroll').scrollTop=1e9;await refreshHistory();}
 let loadingOlder=false;
 async function loadOlder(){if(loadingOlder||!timeline.hasMore||busy)return;loadingOlder=true;$('older-messages').disabled=true;const account=owner;try{const height=$('scroll').scrollHeight,top=$('scroll').scrollTop;const older=await timeline.older();if(account!==owner)return;displayChat({...currentChat,messages:mergeMessages(older,currentChat.messages)});$('scroll').scrollTop=top+$('scroll').scrollHeight-height;await refreshHistory();}catch(e){err('Could not load older messages: '+e.message);}finally{loadingOlder=false;$('older-messages').disabled=false;}}
 $('older-messages').onclick=loadOlder;$('scroll').addEventListener('scroll',()=>{if($('scroll').scrollTop<70)void loadOlder();},{passive:true});
 
 $('new-chat').onclick=()=>{if(busy)return;reset();currentChat=null;$('resume-chat').hidden=true;refreshHistory();closeHist();$('q').focus()};
-$('resume-chat').onclick=()=>{if(!busy&&currentChat?.capture)runCapture();else if(!busy&&currentChat?.pending)runPending();};
+$('resume-chat').onclick=()=>{if(currentChat?.pending){delete currentChat.pending.retryAt;currentChat.pending.retryCount=0;}if(!busy&&currentChat?.capture)runCapture();else if(!busy&&currentChat?.pending)runPending();};
 function applySyncInbox(){
  if(!currentChat||!syncInbox.length)return;
  const old=new Map(currentChat.messages.map(m=>[m.id,m])),merged=mergeMessages(currentChat.messages,syncInbox);syncInbox=[];currentChat.messages=merged;
@@ -230,7 +237,7 @@ async function runCapture(){
  const intent=captureIntent(capture.message),terminal=terminals.open({id:capture.key,kind:intent.kind,title:intent.kind==='note'?'QUICK NOTE / COMPOSING':'REMINDER / SETTING TIME',text:intent.text,time:capture.due,state:'reading'});
  lockChat(true);try{const data=await api('capture',capture);if(owner!==account)return;
  const styled=await styleAction(capture.message,data.answer);data.answer=styled.answer;data.blocks=styled.blocks;
- const answer={id:crypto.randomUUID(),turn:capture.key,started:Date.now(),edited:Date.now(),role:'model',text:data.answer,blocks:data.blocks,reminder:data.kind==='reminder'?{id:capture.key}:undefined,...(data.job?{captureJob:data.job}:{}),...(data.note?{note:data.note}:{})};
+ const answer={id:crypto.randomUUID(),turn:capture.key,started:Date.now(),edited:Date.now(),role:'model',text:data.answer,blocks:data.blocks,usage:styled.usage,reminder:data.kind==='reminder'?{id:capture.key,text:intent.text,due:capture.due}:undefined,...(data.job?{captureJob:data.job}:{}),...(data.note?{note:data.note}:{})};
  queueReply(answer,false);delete currentChat.capture;await persistChat();
  terminal.update({state:data.kind==='note'?'queued':'saved',text:data.answer,time:capture.due});if(data.archiveWarning)err('Reminder saved. Overview sync pending: '+data.archiveWarning);
  if(data.kind==='note'){void watchNote(data.job,terminal,account);api('quick-kick',{}).then(()=>scheduleSync()).catch(e=>terminal.update({state:'queued',text:'Original saved. Filing will retry: '+e.message}));}
@@ -252,7 +259,7 @@ async function localReply(text,extras={}){const m={id:crypto.randomUUID(),turn:c
 async function styleAction(message,answer){try{return await personalityCall({action:'rewrite',message,answer,history:conversationMemory(currentChat.messages),settings:{...core.get(),memory:false,web:'off'},sprite:true,concise:true,operational:true});}catch{return {answer:answer.startsWith('Today')?'I couldn’t read back your schedule just now. Your reminders are still saved.':answer};}}
 async function showTodayReminders(){const r=await api('reminder-overview',{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});terminals.open({id:'today-reminders',kind:'reminder',title:'REMINDERS / LIVE SERVER',text:r.answer,state:'read'});const styled=await styleAction('What reminders do I have today?',r.answer);await localReply(styled.answer,{blocks:styled.blocks,note:r.note,reminder:{overview:true},usage:styled.usage});}
 async function runPending(){
- if(!currentChat?.pending)return;chatController=new AbortController();lockChat(true);err('');
+ if(!currentChat?.pending)return;delete currentChat.pending.retryAt;chatController=new AbortController();lockChat(true);err('');
  const pending=currentChat.pending,it=$('msgs').querySelector('[data-pending]')||msg('model','');it.dataset.pending='true';clearScan();setStatus(it,pending.continuation?'Continuing research…':'Thinking…');first=true;
  const body=pending.body,signal=chatController.signal;
  showUsage(it,pending.usage||{totalTokenCount:estimateQuestion(body.message,body.history,body.files),estimated:true});
@@ -266,7 +273,7 @@ async function runPending(){
    }
    const first=pending.decision;
    let reply=first,extraSources=[],followupCache=null,webContext=null,usage=first.usage;
-   if(first.route==='agenda'){const overview=await api('reminder-overview',{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});reply={...await styleAction(body.message,overview.answer),note:overview.note,reminder:{overview:true}};terminals.open({id:'today-reminders',kind:'reminder',title:'REMINDERS / LIVE SERVER',text:overview.answer,state:'read'});}
+   if(first.route==='agenda'){const overview=await api('reminder-overview',{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});reply={...await styleAction(body.message,overview.answer),note:overview.note,reminder:{overview:true}};usage=addUsage(first.usage,reply.usage);terminals.open({id:'today-reminders',kind:'reminder',title:'REMINDERS / LIVE SERVER',text:overview.answer,state:'read'});}
    else if(first.route!=='reply'){
      if(!['reasoning','vault'].includes(first.route))throw Error('Invalid conversation route.');
      setExpression('focused_analysis');
@@ -277,7 +284,7 @@ async function runPending(){
            if(ev.stage==='usage'){pending.usage=addUsage(first.usage,ev.usage);showUsage(it,pending.usage);}else onProgress(it,ev);
          });
          if(!result.continuation){pending.report=result;break;}
-         pending.continuation=result.continuation;await persistChat();
+         pending.continuation=result.continuation;await persistChat();if(result.retryStatus)throw Object.assign(Error('The model is temporarily unavailable.'),{status:result.retryStatus});
        }
        await persistChat();
      }
@@ -299,10 +306,10 @@ async function runPending(){
    // turn sees the original user messages and all new messages in order.
    if(first.route==='reply'&&currentChat.inputQueue?.length){it.remove();await persistChat();return;}
    it.remove();queueReply(saved,first.route==='reply');cool();await persistChat();
- }catch(x){const message=x.name==='AbortError'?'Paused by you.':x.message;setExpression('neutral_attention');setStatus(it,'Reply paused: '+message);err(message+' Your progress is saved. Use Resume reply to continue.');cool();}
+ }catch(x){const transient=x.name!=='AbortError'&&([429,502,503,504].includes(x.status)||/quota|limit|timed out|connection|fetch/i.test(x.message));pending.retryCount=(pending.retryCount||0)+1;if(transient&&pending.retryCount<=5){pending.retryAt=Date.now()+Math.min(180000,15000*2**(pending.retryCount-1));setStatus(it,'Retrying automatically');err('Capri is waiting for the model and will retry automatically.');}else{delete pending.retryAt;err((x.name==='AbortError'?'Paused by you.':x.message)+' Your progress is saved. Use Resume reply to continue.');}await persistChat();cool();}
  finally{chatController=null;lockChat(false);$('q').focus();}
 }
-async function processBatch(batch){const text=batch.map(x=>x.replyTo?'[Reply to Capri: '+x.replyTo.text+']\n'+x.text:x.text).join('\n\n[Next message]\n');
+async function processBatch(batch){let text=batch.map(x=>x.replyTo?'[Reply to Capri: '+x.replyTo.text+']\n'+x.text:x.text).join('\n\n[Next message]\n');
  lockChat(true);
  try{
  currentChat??=blankChat();const context=await timeline.context();history=conversationMemory(turnHistory(mergeMessages(context,currentChat.messages),batch,currentChat.inputQueue));
@@ -315,9 +322,10 @@ async function processBatch(batch){const text=batch.map(x=>x.replyTo?'[Reply to 
  if(!sent.length&&!captureIntent(text)&&reminderQuery(text)==='today'){await showTodayReminders();return;}
  if(!sent.length&&captureIntent(text)){
   const capture=await agenda.capture(text,batch.at(-1).id);
-  if(capture.needsTime){currentChat.reminderDraft=capture;terminals.open({id:capture.key,kind:'reminder',title:'REMINDER / CHOOSE TIME',text:captureIntent(text).text,state:'waiting'});const styled=await styleAction(text,'Ask what time the reminder should be set for. Nothing has been scheduled yet.');await localReply(styled.answer,{blocks:styled.blocks});return;}
+  if(capture.needsTime){currentChat.reminderDraft=capture;terminals.open({id:capture.key,kind:'reminder',title:'REMINDER / CHOOSE TIME',text:captureIntent(text).text,state:'waiting'});await localReply('When should I remind you? Nothing is scheduled yet.');if(!captureIntent(text).followup)return;}
   if(capture.cancelled){const answer='No reminder set. Tell me when you’re ready.';currentChat.messages.push({role:'model',text:answer});msg('model',answer);await persistChat();return;}
-  currentChat.capture=capture;await persistChat();await runCapture();return;
+  if(!capture.needsTime){currentChat.capture=capture;await persistChat();await runCapture();}
+  const followup=captureIntent(text).followup;if(!followup)return;text=followup;
  }
  const overview=[];const olderReminders=reminderQuery(text)==='older';
  const retrying=/\b(again|retry)\b/i.test(text)&&/\b(mir|age|search|do it|try)\b/i.test(text);const priorQuestion=[...history].reverse().find(m=>m.role==='user'&&!/\b(again|retry)\b/i.test(m.text))?.text;
@@ -330,6 +338,7 @@ async function pumpConversation(){
  if(queueWorking||busy||booting||!signedIn||!currentChat||Date.now()<queueRetryAt)return;
  queueWorking=true;const account=owner;
  try{
+  if(currentChat.pending?.retryAt&&currentChat.pending.retryAt<=Date.now()){delete currentChat.pending.retryAt;await runPending();return;}
   // Migrate old minute-delayed replies. New input supersedes any unseen draft.
   if(currentChat.delayed?.length){if(!currentChat.inputQueue?.length&&!currentChat.delivery){const messages=currentChat.delayed.flatMap(({message})=>(message.blocks?.length?message.blocks:splitReply(message.text)).map((text,index)=>({...message,id:index?crypto.randomUUID():message.id,text,blocks:[text]})));currentChat.delivery={messages,due:Date.now()};}delete currentChat.delayed;await persistChat();}
   while(currentChat.inputQueue?.length&&!currentChat.pending&&!currentChat.capture){
@@ -342,7 +351,7 @@ async function pumpConversation(){
   }
   if(!busy&&!currentChat.pending&&currentChat.delivery?.messages.length&&currentChat.delivery.due<=Date.now()){
    $('msgs').querySelector('[data-delivery]')?.remove();
-   const message=currentChat.delivery.messages.shift();delete message.deliveryInterruptible;message.started=message.sentAt=message.edited=Date.now();currentChat.messages.push(message);const it=msg('model','');showPersonality(it,message);refs(it,message.sources||[]);webPanel(it,message);showUsage(it,message.usage);
+   const message=currentChat.delivery.messages.shift();delete message.deliveryInterruptible;message.started=message.sentAt=message.edited=Date.now();currentChat.messages.push(message);const it=msg('model','');showPersonality(it,message);refs(it,message.sources||[]);webPanel(it,message);showUsage(it,message.usage);notifications.notify(message);
    if(currentChat.delivery.messages.length)currentChat.delivery.due=Date.now()+bubbleDelay(currentChat.delivery.messages[0].text);else delete currentChat.delivery;
    history=conversationMemory(currentChat.messages);await persistChat();
   }

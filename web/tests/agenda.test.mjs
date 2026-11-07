@@ -20,7 +20,7 @@ const subscription={endpoint:'https://fcm.googleapis.com/fcm/send/token',keys:{a
 test('push restricts destinations and encryption keys',()=>{assert.equal(validSubscription(subscription),true);for(const endpoint of ['https://localhost/private','http://fcm.googleapis.com/token','https://fcm.googleapis.com.evil.test/token','https://x@y.example/a'])assert.equal(validSubscription({...subscription,endpoint}),false);});
 test('delivery includes personality, removes expired devices, and acknowledges success',async()=>{
  const calls=[],rpc=async(name,b)=>{calls.push({name,b});if(name==='aria_reminder_claim')return [{id:key,text:'Tea',notification:'Kettle time, choom.'}];if(name==='aria_notification_targets')return [{subscription}];},env={VAPID_PUBLIC_KEY:'public',VAPID_PRIVATE_KEY:'private',VAPID_SUBJECT:'mailto:test@example.com'};
- let payload;await deliverReminders({rpc,env,deliver:async(_,p)=>payload=JSON.parse(p)});assert.equal(payload.body,'Kettle time, choom.\nTea');assert.equal(calls.at(-1).b.p_delivered,true);
+ let payload;await deliverReminders({rpc,env,deliver:async(_,p)=>payload=JSON.parse(p)});assert.equal(payload.body,'Kettle time, choom.');assert.equal(calls.at(-1).b.p_delivered,true);
  calls.length=0;await deliverReminders({rpc,env,deliver:async()=>{throw {statusCode:410};}});assert.ok(calls.some(c=>c.name==='aria_push_remove'));assert.equal(calls.at(-1).b.p_delivered,true,'an expired device does not need delivery retries');
 });
 test('scheduled push voice comes from configured personality and is persisted with original reminder',async t=>{

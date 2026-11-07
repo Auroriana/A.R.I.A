@@ -39,13 +39,13 @@ Capri can change its research depth to match the question:
 3. Direct lookups with retrieved evidence can proceed to an answer without the full research loop.
 4. More involved questions enter repeated searches and gap checks before final synthesis.
 
-The research planner can request up to four searches per round. It filters repeated queries, deduplicates passages, and preserves stable citation IDs. There is no fixed total research-round cap; model quotas and execution constraints still apply. The final evidence context holds up to 180,000 characters of complete passages, favoring recently retrieved evidence.
+The research planner can request up to four searches per round. It filters repeated queries, deduplicates passages, and preserves stable citation IDs. Quick research is bounded to 2 planning rounds / 8 searches; MIR to 4 rounds / 16 searches. Retrieved passages are ranked and filtered before reading. The final evidence context holds up to 18,000 characters of complete passages, favoring relevance and repeated matches before recency.
 
 Search activity is visible in the interface, including queries, matching notes, and preparation stages. Provider-supplied Gemini thought summaries appear separately when available; these are not raw internal reasoning.
 
 ### Efficient model routing
 
-Routing and research planning use `gemini-3.5-flash-lite`; final answers use the model selected in the interface. This lets smaller models handle search coordination while retaining a separate choice for synthesis.
+Routing and research planning use the configured analyzing model (default `gemini-3.5-flash-lite`); final answers use the configured reasoning model or the model selected in the interface. This lets smaller models handle search coordination while retaining a separate choice for synthesis.
 
 The repository provides six configurable Gemini chat choices. Their IDs and quota settings are defined in [`web/lib/models.js`](web/lib/models.js). Availability depends on the connected Google API project.
 
@@ -166,7 +166,7 @@ For Vercel, use `web` as the root directory, **Other** as the framework preset, 
 
 Capri is designed for one owner. Protected API requests check the owner's identity, and browser sessions use HttpOnly cookies. Model credentials stay on the server. Normal browser API calls stay on the website's origin.
 
-Vault search is restricted to approved, AI-enabled material and the permitted vault scope. Quota reservations precede model calls, and the current configuration does not automatically fall back to a paid provider. DeepSeek is disabled in this release.
+Vault search is restricted to approved, AI-enabled material and the permitted vault scope. Quota reservations precede model calls, and the current configuration does not automatically fall back to a new paid provider. Web grounding can try alternative configured Gemini models when quota or availability fails. DeepSeek is disabled in this release.
 
 The free-tier confirmation setting is an operator assertion, not a check of Google's live billing state or a guaranteed spending cap. External provider terms still apply to submitted content. Cloud-backed notes and model processing do not make this a fully local or end-to-end encrypted application. The app repository ignores the local `vault/` directory and local secret files; maintain an independent backup of your notes.
 
@@ -202,6 +202,11 @@ The local audit reports aggregate Markdown size and capacity estimates without u
 Mocked tests validate application behavior; real model quality, hosted database policies, deployment access, and scheduled workers need live checks. This README was prepared from repository source and documentation, not a new end-to-end deployment test.
 
 ## Documentation
+
+- [API call and token inventory](docs/API-USAGE.md)
+- [Future model-router instructions](docs/MODEL-ROUTER-INSTRUCTIONS.md)
+- [Styling handoff](docs/UI-HANDOFF.md) and [all CSS/page markup in one file](docs/UI-STYLES.md)
+
 
 - [Web configuration and deployment](web/README.md)
 - [Notes workspace, conversations, and resumable research](docs/NOTES-WORKSPACE.md)

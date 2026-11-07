@@ -38,6 +38,8 @@ export function promptSizes(request){
 }
 export function callUsage(usage,request,answer,{model,role,phase,latencyMs}){
   const sizes=promptSizes(request),normalized=normalizeUsage(usage,sizes.input+estimateText(answer));
+  normalized.estimated ||= !Number.isFinite(usage?.promptTokenCount)||!Number.isFinite(usage?.candidatesTokenCount);
+  normalized.promptTokenCount??=sizes.input;normalized.candidatesTokenCount??=estimateText(answer);
   return {...normalized,calls:[{model,role,phase,latencyMs,...normalized,promptEstimates:sizes}]};
 }
 export function usageDetails(usage){

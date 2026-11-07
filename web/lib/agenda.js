@@ -1,6 +1,6 @@
 import {settingsOf} from './core-settings.js';
 import {isUuid} from './notes.js';
-import {captureIntent} from '../public/capture.js';
+import {captureIntent,reminderContent} from '../public/capture.js';
 import {archiveReminderOverview} from './reminder-overview.js';
 export async function agendaRoutes({req,route,token,sb,send,fail,readBody,generate,model}){
  if(!['/api/capture','/api/agenda','/api/reminder-complete','/api/reminder-overview'].includes(route))return false;
@@ -28,18 +28,19 @@ export async function agendaRoutes({req,route,token,sb,send,fail,readBody,genera
   if(!r.ok)throw fail('The note could not be queued. Try again after checking Quick Note.',409);
   send(200,{answer:'Got it, choom. Your original’s saved — I’m filing the note. We can keep talking.',kind:'note',job:r.id});return true;
  }
+ intent.text=reminderContent(intent.text);
  const due=Date.parse(b.due);
  if(!Number.isFinite(due))throw fail('Choose a future time within the next year.');
  try{new Intl.DateTimeFormat('en',{timeZone:b.timezone}).format();}catch{throw fail('Choose a valid time zone.');}
  if(typeof b.timezone!=='string'||b.timezone.length>100)throw fail('A time zone is required.');
  const existing=(await rpc('aria_reminder_list',{})).find(r=>r.id===b.key);
- if(existing){if(existing.text!==intent.text||Date.parse(existing.due_at)!==due||existing.timezone!==b.timezone)throw fail('This request already belongs to another reminder.',409);send(200,{kind:'reminder',answer:'Your reminder is saved: '+existing.text+' — '+new Date(existing.due_at).toLocaleString('en',{timeZone:existing.timezone})+' ('+existing.timezone+').'});return true;}
+ if(existing){if(reminderContent(existing.text)!==intent.text||Date.parse(existing.due_at)!==due||existing.timezone!==b.timezone)throw fail('This request already belongs to another reminder.',409);send(200,{kind:'reminder',answer:'Your reminder is saved: '+existing.text+' — '+new Date(existing.due_at).toLocaleString('en',{timeZone:existing.timezone})+' ('+existing.timezone+').'});return true;}
  if(due<=Date.now()||due>Date.now()+366*86400000)throw fail('Choose a future time within the next year.');
  let notification=null;
  // Generate once when scheduled; delivery never depends on model availability.
  if(process.env.GEMINI_API_KEY&&process.env.GEMINI_FREE_TIER_CONFIRMED==='true'){
-  const request={systemInstruction:{parts:[{text:settingsOf(b.settings).prompts.personality+'\nWrite one short push notification in your own voice for the supplied reminder. Say what you want to say to the owner, grounded in the reminder. No invented facts, promises of completed work, or claims of sensing the user. The exact reminder text is appended separately. Maximum 180 characters. Return only spoken words. No sprite labels, stage directions or metadata. Return plain text.'}]},contents:[{role:'user',parts:[{text:JSON.stringify({reminder:intent.text,due:new Date(due).toISOString(),timezone:b.timezone})}]}],generationConfig:{maxOutputTokens:256}};
-  try{if(await rpc('aria_reserve',{p_model:model,p_tokens:Buffer.byteLength(JSON.stringify(request))+256})){const result=await generate(model,request);if(!result.truncated&&typeof result.answer==='string')notification=result.answer.replace(/^\s*\[sprite:[^\]]*\]\s*/i,'').trim().slice(0,180)||null;}}catch{/* Scheduling still works if the model is unavailable. */}
+  const request={systemInstruction:{parts:[{text:settingsOf(b.settings).prompts.personality+'\nWrite one short push notification in your own voice for the supplied reminder. Say what you want to say to the owner, grounded in the reminder. No invented facts, promises of completed work, or claims of sensing the user. Include the action itself in your message; it is due NOW, not in five minutes. Do not include unrelated follow-up tasks or relative scheduling language. Maximum 180 characters. Return only spoken words. No sprite labels, stage directions or metadata. Return plain text.'}]},contents:[{role:'user',parts:[{text:JSON.stringify({reminder:intent.text,due:new Date(due).toISOString(),timezone:b.timezone})}]}],generationConfig:{maxOutputTokens:256}};
+  try{if(await rpc('aria_reserve',{p_model:model,p_tokens:Buffer.byteLength(JSON.stringify(request))+256})){const result=await generate(model,request);if(!result.truncated&&typeof result.answer==='string')notification=result.answer.replace(/\[(?:sprite:[^\]]+|focus|focused_analysis|neutral_attention)\]\s*/gi,'').trim().slice(0,180)||null;}}catch{/* Scheduling still works if the model is unavailable. */}
  }
  const r=await rpc('aria_reminder_save',{p_id:b.key,p_text:intent.text,p_due:new Date(due).toISOString(),p_timezone:b.timezone,p_notification:notification});
  if(!r.ok)throw fail('This request identifier already belongs to another reminder.',409);

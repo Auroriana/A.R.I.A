@@ -1,12 +1,12 @@
 export async function readChatStream(response,onProgress){
   if(!response.ok||!response.headers.get('content-type')?.includes('application/x-ndjson')){
     let data;try{data=await response.json();}catch{throw new Error(`The server returned an unreadable response (HTTP ${response.status}). Please try again.`);}
-    if(!response.ok)throw new Error(data.error??'Request failed.');return data;
+    if(!response.ok)throw Object.assign(new Error(data.error??'Request failed.'),{status:response.status});return data;
   }
   const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',result;
   function consume(line){
     if(!line.trim())return;const event=JSON.parse(line);
-    if(event.type==='error')throw new Error(event.error);
+    if(event.type==='error')throw Object.assign(new Error(event.error),{status:event.status});
     if(event.type==='progress')onProgress(event);
     if(event.type==='result')result=event;
   }

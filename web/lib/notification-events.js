@@ -1,7 +1,7 @@
 // Transport-neutral event contract. In-app messages are persisted before fan-out.
 // Native APNs / FCM adapters can consume this envelope without invoking a model.
 export function reminderEvent(job){
- let body=(job.notification||'Hey, it’s time.')+'\n'+job.text;
+ let body=job.notification?job.notification.replace(/\[(?:sprite:[^\]]+|focus|focused_analysis|neutral_attention)\]\s*/gi,''):'Time to '+job.text;
  while(Buffer.byteLength(body)>2400)body=body.slice(0,-2);
  return {version:1,type:'reminder.due',id:job.id,messageId:job.id+'/opening',occurredAt:job.due_at,title:'Capri',body,url:'/?message='+encodeURIComponent(job.id+'/opening')};
 }

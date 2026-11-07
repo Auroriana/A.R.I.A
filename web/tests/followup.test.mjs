@@ -69,7 +69,7 @@ test('HTTP follow-up cache survives response transport, preserves TTL and is kep
   if(url.includes('aria_reserve'))return Response.json(true);
   if(url.includes('aria_vault_overview'))return Response.json([]);
   if(url.includes('aria_search')){searches++;return Response.json([{id:'chunk',title:'Profile',source_path:'Profile.md',vault_name:'Notes',content:source.excerpt}]);}
-  const body=JSON.parse(options.body);assert.match(url,/generateContent$/);requestCount++;
+  const body=JSON.parse(options.body);assert.match(url,/generateContent$/);if(body.systemInstruction.parts[0].text.includes('choose additional searches'))return Response.json({candidates:[{content:{parts:[{text:'{"queries":[]}'}]}}],usageMetadata:{totalTokenCount:100}});requestCount++;
   if(followupTurn)assert.match(body.systemInstruction.parts[0].text,requestCount%2?/intent "context"/:/earlier cited passage snapshots/);
   const answer=requestCount%2?(followupTurn?'{"intent":"context","queries":[]}':'{"intent":"lookup","queries":[{"q":"Jhicaih"}]}'):(followupTurn?'That earns my respect [S1].':'She kept her promise [S1].');
   return Response.json({candidates:[{content:{parts:[{text:answer}]}}],usageMetadata:{totalTokenCount:100}});
